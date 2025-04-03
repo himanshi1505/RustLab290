@@ -1,5 +1,11 @@
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cell {
-    pub row: i16,
-    pub col: i16,
+    pub row: usize,
+    pub col: usize,
+}
+
+impl Cell {
+    pub fn new(row: usize, col: usize) -> Self {
+        Self { row, col }
+    }
 }
