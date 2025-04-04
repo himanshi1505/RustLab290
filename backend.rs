@@ -69,8 +69,112 @@ impl Backend {
             }
         }
     }
+    /// Checks if setting this cell creates a circular dependency
+    pub fn is_in_cycle(&mut self, start: &Cell) -> bool {
+        let mut stack = vec![start];
+        let mut found_cycle = false;
 
-    
+        // Mark starting cell as visited
+        self.grid[start.row][start.col].dirty_parents = true;
+
+        while let Some(current) = stack.pop() {
+            // Get all dependents of current cell
+            let dependents = & mut self.grid[current.row][current.col].dependents;
+
+            for dep in dependents {
+                // Cycle detected if we return to start cell
+                if dep == start {
+                    found_cycle = true;
+                    break;
+                }
+
+                // Only process unvisited cells
+                if !self.grid[dep.row][dep.col].dirty_parents {
+                    self.grid[dep.row][dep.col].dirty_parents = true;
+                    stack.push(dep);
+                }
+            }
+
+            if found_cycle {
+                break;
+            }
+        }
+
+        // Reset visited markers
+        self.reset_found(start);
+        found_cycle
+    }
+
+    /// Resets dirty_parents flags for all cells reachable from start
+    pub fn reset_found(&mut self, start: &Cell) {
+        let mut stack = vec![start]; //NOTE:::: change to our VecWrapper to save sapce and time complexity 
+        self.grid[start.row][start.col].dirty_parents = false;
+
+        while let Some(current) = stack.pop() {
+            let dependents = & mut self.grid[current.row][current.col].dependents;
+
+            for dep in dependents {
+                if self.grid[dep.row][dep.col].dirty_parents {
+                    self.grid[dep.row][dep.col].dirty_parents = false;
+                    stack.push(dep); //NOTE::::make sure reference is getting pushed and no cloning is happening
+                }
+            }
+        }
+    }
+    pub fn checkCircularDependency(&self,  cell: &Cell) -> bool{
+        isInCycle(cell)
+    }
+    pub fn set_cell_value( &mut self, cell: Cell, expression: &str,) -> Result<(), ExpressionError> {
+        // Parse the expression
+        let (new_function, success) = self.parse_expression(expression);
+        if !success {
+            return Err(ExpressionError::CouldNotParse);
+        }
+
+        let cell_data = self.get_cell_data_mut(cell).ok_or(ExpressionError::CouldNotParse)?;
+
+        // Save old state
+        let old_function = cell_data.function.clone();
+        let old_value = cell_data.value;
+
+        // Handle constant functions
+        if new_function.is_constant() {
+            let (new_value, error) = self.evaluate_expression(&new_function);
+            cell_data.value = new_value;
+            cell_data.error = error;
+            cell_data.function = new_function;
+            self.update_graph(cell, &old_function);
+            self.update_dependents(cell, old_value);
+            return Ok(());
+        }
+
+        // Update function and dependencies
+        cell_data.function = new_function.clone();
+        self.update_graph(cell, &old_function);
+
+        // Check for circular dependencies
+        if self.check_circular_dependency(cell) {
+            // Revert changes
+            cell_data.function = old_function.clone();
+            self.update_graph(cell, &new_function);
+            return Err(ExpressionError::CircularDependency);
+        }
+
+        // Evaluate new value
+        let (new_value, error) = self.evaluate_expression(&cell_data.function);
+        cell_data.value = if error == CellError::NoError {
+            new_value
+        } else {
+            0
+        };
+        cell_data.error = error;
+
+        // Update dependents
+        self.update_dependents(cell, old_value);
+
+        Ok(())
+    }
+
 }
 
 impl Default for CellData {
