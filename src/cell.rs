@@ -1,11 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cell {
-    pub row: usize,
-    pub col: usize,
+    pub row: u32,
+    pub col: u32,
 }
 
-impl Cell {
-    pub fn new(row: usize, col: usize) -> Self {
-        Self { row, col }
-    }
-}
