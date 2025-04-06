@@ -1,3 +1,4 @@
+mod cell;
 use crate::cell::Cell;
 
 
@@ -71,12 +72,10 @@ impl Backend {
         Backend { grid, rows, cols }
     }
 
-    pub fn get_cell_value(&self, cell: Cell) -> Option<(i32, CellError)> {
-        self.grid
-            .get(cell.row as usize)
-            .and_then(|row| row.get(cell.col as usize))
-            .map(|data| (data.value, data.error.clone())) ////NOTE:::: change this to reference, remove clone
+    pub fn get_cell_value(&mut self, cell: Cell) -> Option<&mut CellData> {
+        self.grid.get_mut(cell.row as usize)?.get_mut(cell.col as usize)
     }
+
 
     pub fn reset(&mut self) {
         for row in &mut self.grid {
@@ -112,7 +111,7 @@ impl Backend {
                 if let Some(dep_data) = self.get_cell_value(dep) {
                     if dep_data.dirty_parents == 0 {
                         dep_data.dirty_parents = 1;
-                        stack.push(dep);
+                        stack.push(dep); //NOTE::::make sure reference is getting pushed and no cloning is happening
                     }
                 }
             }
@@ -148,7 +147,7 @@ impl Backend {
     pub fn checkCircularDependency(&self,  cell: &Cell) -> bool{
         self.is_in_cycle(cell)
     }
- /*   pub fn set_cell_value( &mut self, cell: Cell, expression: &str,) -> Result<(), ExpressionError> {
+    pub fn set_cell_value( &mut self, cell: Cell, expression: &str,) -> Result<(), ExpressionError> {
         // Parse the expression
         let (new_function, success) = self.parse_expression(expression);
         if !success {
@@ -168,7 +167,7 @@ impl Backend {
             cell_data.error = error;
             cell_data.function = new_function;
             self.update_graph(cell, &old_function);
-            self.update_dependents(cell, old_value);
+            self.update_dependents(cell);
             return Ok(());
         }
 
@@ -177,7 +176,7 @@ impl Backend {
         self.update_graph(cell, &old_function);
 
         // Check for circular dependencies
-        if self.check_circular_dependency(cell) {
+        if self.checkCircularDependency(cell) {
             // Revert changes
             cell_data.function = old_function.clone();
             self.update_graph(cell, &new_function);
@@ -194,16 +193,14 @@ impl Backend {
         cell_data.error = error;
 
         // Update dependents
-        self.update_dependents(cell, old_value);
+        self.update_dependents(cell);
 
         Ok(())
     }
-  */ 
+   
   pub fn update_graph(&mut self, cell: Cell, old_function: &Function) {
-    let cell_row = cell.row as usize;
-    let cell_col = cell.col as usize;
-    
-    let cell_data = &mut self.grid[cell_row][cell_col];
+   
+    let Some(cell_data)  = self.get_cell_value(&cell);
 
     // Remove old dependencies
     match old_function {
@@ -277,29 +274,30 @@ impl Backend {
 
 /// Sets dirty parent counts for topological sorting
 pub fn set_dirty_parents(&mut self, cell: Cell, stack: &mut Vec<Cell>) {
-    if let Some(root_data) = self.get_cell_value(cell) {
+    if let Some(root_data) = self.get_cell_value(&cell) {
         root_data.dirty_parents = 0;
     }
     stack.push(cell);
 
     while let Some(current) = stack.pop() {
-        let dependents = self.get_cell_value(current)
-            .map(|c| c.dependents.clone())
-            .unwrap_or_default();
-
-        for child in dependents {
-            if let Some(child_data) = self.get_cell_value(child) {
-                if child_data.dirty_parents == 0 {
-                    stack.push(child);
+        if let Some(temp) = self.get_cell_value(current){
+            let dependents =temp.dependents;
+            
+            for child in dependents {
+                if let Some(child_data) = self.get_cell_value(child) {
+                    if child_data.dirty_parents == 0 {
+                        stack.push(child);
+                    }
+                    child_data.dirty_parents += 1;
                 }
-                child_data.dirty_parents += 1;
             }
         }
+        
     }
 }
 
 /// Recursively update dependent cells using topological sort
-pub fn update_dependants(&mut self, cell: Cell) {
+pub fn update_dependents(&mut self, cell: Cell) {
     let mut stack = Vec::new();
     self.set_dirty_parents(cell, &mut stack);
 
@@ -355,7 +353,7 @@ pub fn update_dependants(&mut self, cell: Cell) {
     pub fn constant_function(value: i32) -> Function {
         Function::Constant(value)
     }
-   */
+   
     
 }
 
