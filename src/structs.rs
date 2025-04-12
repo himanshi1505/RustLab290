@@ -139,14 +139,24 @@ impl Function {
 
 #[derive(Debug, Clone)]
 pub struct CellData {
-    pub cell: Cell,
+    /// The value of the cell
     pub value: i32,
-    // Using HashSet instead of Vec for more efficient lookups
-    pub dependents: HashSet<Cell>,
-    pub dependencies: HashSet<Cell>,
+
+    /// Cells that depend on this one
+    pub dependents: Vec<Cell>,
+
+    /// Cells this one depends on
     pub function: Function,
+
     pub error: CellError,
+
+    /// Number of parent cells that must be updated before this one
+    pub dirty_parents: i32,
+
+    /// Useful for DFS
+    pub visited: bool,
 }
+
 
 // Function implementations
 
