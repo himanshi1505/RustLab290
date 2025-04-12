@@ -16,49 +16,62 @@ pub enum CellError {
     DivideByZero,
     DependencyError, // depends on cell which has div by zero
 }
+//checked
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OperandType {
     Cell,
     Int,
 }
+//checked
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OperandData {
+    Cell(Cell),
+    Value(i32),
+}
+//checked
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Operand {
     pub type_: OperandType,
-    pub cell: Option<Cell>,
-    pub value: Option<i32>,
+    pub data: OperandData,
 }
+//checked
 
-impl Operand {
-    pub fn new_cell(cell: Cell) -> Self {
-        Operand {
-            type_: OperandType::Cell,
-            cell: Some(cell),
-            value: None,
-        }
-    }
 
-    pub fn new_int(value: i32) -> Self {
-        Operand {
-            type_: OperandType::Int,
-            cell: None,
-            value: Some(value),
-        }
-    }
-}
+// impl Operand {
+//     pub fn new_cell(cell: Cell) -> Self {
+//         Operand {
+//             type_: OperandType::Cell,
+//             cell: Some(cell),
+//             value: None,
+//         }
+//     }
+
+//     pub fn new_int(value: i32) -> Self {
+//         Operand {
+//             type_: OperandType::Int,
+//             cell: None,
+//             value: Some(value),
+//         }
+//     }
+// }
+//not currently required 
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BinaryOp {
     pub first: Operand,
     pub second: Operand,
 }
+//checked
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RangeFunction {
     pub top_left: Cell,
     pub bottom_right: Cell,
 }
+//checked
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FunctionType {
@@ -74,15 +87,29 @@ pub enum FunctionType {
     Multiply,
     Divide,
 }
+//checked
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FunctionData {
+    /// Used for MinFunction, MaxFunction, AvgFunction, SumFunction, StdevFunction
+    RangeFunction(RangeFunction),
+
+    /// Used for PlusOp, MinusOp, MultiplyOp, DivideOp
+    BinaryOp(BinaryOp),
+
+    /// Used for SleepFunction
+    SleepValue(Operand),
+
+    /// Used for Constant
+    Value(i32),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Function {
     pub type_: FunctionType,
-    // Using Option since Rust doesn't have unions like C
-    pub range_function: Option<RangeFunction>,
-    pub binary_op: Option<BinaryOp>,
-    pub value: Option<i32>,
+    pub data: FunctionData,
 }
+//checked
 
 impl Function {
     pub fn new_range_function(type_: FunctionType, range: RangeFunction) -> Self {
