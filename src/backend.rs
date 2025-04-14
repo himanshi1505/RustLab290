@@ -383,57 +383,84 @@ pub fn update_dependents(&mut self, cell: &Cell) {
         }
     }
 }
-pub fn set_cell_value( &mut self, cell: Cell, expression: &str,) -> Result<(), ExpressionError> {
+pub fn set_cell_value(
+    &mut self,
+    cell: Cell,
+    expression: &str,
+) -> Result<(), ExpressionError> {
     // Parse the expression
     let (new_function, success) = self.parse_expression(expression);
     if !success {
         return Err(ExpressionError::CouldNotParse);
     }
 
-    let cell_data = self.get_cell_value(cell).ok_or(ExpressionError::CouldNotParse)?;
+    // Get cell data
+    let cell_data_rc = self.get_cell_value(&cell).ok_or(ExpressionError::CouldNotParse)?;
+    let cell_data_rc = Rc::clone(&cell_data_rc); // Clone the Rc to avoid borrow issues
+    
+    // Extract old state with a scoped borrow
+    let (old_function, old_value) = {
+        let cell_data = cell_data_rc.borrow();
+        (cell_data.function.clone(), cell_data.value)
+    };
 
-    // Save old state
-    let old_function = cell_data.function.clone();
-    let old_value = cell_data.value;
-
-    // Handle constant functions
-    if new_function.is_constant() {
+    // Handle constant functions early
+    if new_function.type_ == FunctionType::Constant {
         let (new_value, error) = self.evaluate_expression(&new_function);
-        cell_data.value = new_value;
-        cell_data.error = error;
-        cell_data.function = new_function;
-        self.update_graph(cell, &old_function);
-        self.update_dependents(cell);
+        
+        // Update cell in a single mutable borrow
+        {
+            let mut cell_data = cell_data_rc.borrow_mut();
+            cell_data.value = new_value;
+            cell_data.error = error;
+            cell_data.function = new_function;
+        }
+        
+        self.update_graph(&cell, &old_function);
+        self.update_dependents(&cell);
         return Ok(());
     }
 
-    // Update function and dependencies
-    cell_data.function = new_function.clone();
-    self.update_graph(cell, &old_function);
+    // Update function in a separate borrow scope
+    {
+        let mut cell_data = cell_data_rc.borrow_mut();
+        cell_data.function = new_function.clone();
+    }
+    
+    // Update graph with old function
+    self.update_graph(&cell, &old_function);
 
     // Check for circular dependencies
-    if self.check_circular_dependency(cell) {
-        // Revert changes
-        cell_data.function = old_function.clone();
-        self.update_graph(cell, &new_function);
+    if self.check_circular_dependency(&cell) {
+        // Revert changes in a separate borrow scope
+        {
+            let mut cell_data = cell_data_rc.borrow_mut();
+            cell_data.function = old_function;  // No need to clone again
+        }
+        
+        self.update_graph(&cell, &new_function);
         return Err(ExpressionError::CircularDependency);
     }
 
     // Evaluate new value
-    let (new_value, error) = self.evaluate_expression(&cell_data.function);
-    cell_data.value = if error == CellError::NoError {
-        new_value
-    } else {
-        0
-    };
-    cell_data.error = error;
+    let (new_value, error) = self.evaluate_expression(&new_function);
+    
+    // Update cell value in a separate borrow scope
+    {
+        let mut cell_data = cell_data_rc.borrow_mut();
+        cell_data.value = if error == CellError::NoError {
+            new_value
+        } else {
+            0
+        };
+        cell_data.error = error;
+    }
 
     // Update dependents
-    self.update_dependents(cell);
+    self.update_dependents(&cell);
 
     Ok(())
 }
-
 
     pub fn min_function(&self, range: &RangeFunction) -> Result<i32, CellError> {
         let mut min_val = i32::MAX;
@@ -598,10 +625,9 @@ pub fn set_cell_value( &mut self, cell: Cell, expression: &str,) -> Result<(), E
         }
     }
 
-    
-
-
-    
+    pub fn parse_expression(&self, expression: &str) -> (Function, bool) {
+        (crate::parser::parse_expression(expression), true)
+    }
 }
 
 

@@ -13,6 +13,13 @@ pub enum CellError {
     DivideByZero,
     DependencyError, // depends on cell which has div by zero
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExpressionError {
+    CouldNotParse,
+    CircularDependency,
+}
+
 //checked
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -108,58 +115,54 @@ pub struct Function {
 }
 //checked
 
-// impl Function {
-//     pub fn new_range_function(type_: FunctionType, range: RangeFunction) -> Self {
-//         assert!(matches!(type_, 
-//             FunctionType::Min | 
-//             FunctionType::Max | 
-//             FunctionType::Avg | 
-//             FunctionType::Sum | 
-//             FunctionType::Stdev
-//         ));
+impl Function {
+    //what to do when it matches with none
+    pub fn new_range_function(type_: FunctionType, range: RangeFunction) -> Self {
+        assert!(matches!(type_, 
+            FunctionType::Min | 
+            FunctionType::Max | 
+            FunctionType::Avg | 
+            FunctionType::Sum | 
+            FunctionType::Stdev
+        ));
         
-//         Function {
-//             type_,
-//             range_function: Some(range),
-//             binary_op: None,
-//             value: None,
-//         }
-//     }
+        Function {
+            type_,
+            data: FunctionData::RangeFunction(range),
+        }
+    }
 
-//     pub fn new_binary_op(type_: FunctionType, op: BinaryOp) -> Self {
-//         assert!(matches!(type_,
-//             FunctionType::Plus |
-//             FunctionType::Minus |
-//             FunctionType::Multiply |
-//             FunctionType::Divide
-//         ));
+    pub fn new_binary_op(type_: FunctionType, op: BinaryOp) -> Self {
+        assert!(matches!(type_,
+            FunctionType::Plus |
+            FunctionType::Minus |
+            FunctionType::Multiply |
+            FunctionType::Divide
+        ));
         
-//         Function {
-//             type_,
-//             range_function: None,
-//             binary_op: Some(op),
-//             value: None,
-//         }
-//     }
+        Function {
+            type_,
+            data: FunctionData::BinaryOp(op),
+        }
+    }
 
-//     pub fn new_constant(value: i32) -> Self {
-//         Function {
-//             type_: FunctionType::Constant,
-//             range_function: None,
-//             binary_op: None,
-//             value: Some(value),
-//         }
-//     }
+    pub fn new_constant(value: i32) -> Self {
+        Function {
+            type_: FunctionType::Constant,
+            data: FunctionData::Value(value),
+        }
+    }
 
-//     pub fn new_sleep(value: i32) -> Self {
-//         Function {
-//             type_: FunctionType::Sleep,
-//             range_function: None,
-//             binary_op: None,
-//             value: Some(value),
-//         }
-//     }
-// }
+    pub fn new_sleep(value: i32) -> Self {
+        Function {
+            type_: FunctionType::Sleep,
+            data: FunctionData::SleepValue(Operand {
+                type_: OperandType::Int,
+                data: OperandData::Value(value),
+            }),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct CellData {
