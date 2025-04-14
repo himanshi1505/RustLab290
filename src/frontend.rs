@@ -139,7 +139,9 @@ impl Frontend {
             if let Some(eq_pos) = input.find('=') {
                 let (cell_str, expr_str) = input.split_at(eq_pos);
                 let cell = parse_cell_reference(cell_str);
+                
                 let expr = &expr_str[1..]; // skip '='
+                
                 match self.backend.set_cell_value(cell, expr) {
                     Ok(_) => true,
                     Err(_) => false,

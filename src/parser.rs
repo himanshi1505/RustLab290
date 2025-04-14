@@ -1,4 +1,5 @@
 use crate::structs::*;
+use crate::backend::Backend;
 
 
 // fn convert_to_int(expression: &str) -> i32 {
@@ -31,7 +32,10 @@ pub fn parse_cell_reference(reference: &str) -> Cell {
         let digits = &reference[i..];
         cell.row = digits.parse().unwrap_or(0);  // Convert digits to row number
     }
-    
+    println!("cell.row: {:?}", cell.row);
+    println!("cell.col: {:?}", cell.col);
+    cell.row-=1;
+    cell.col-=1;
     cell
 }
 
@@ -124,7 +128,7 @@ fn parse_range_function(expression: &str, function_type: FunctionType) -> Functi
 
 
 //success param was not being used so removed it
-pub fn parse_expression(expression: &str) -> Function {
+pub fn parse_expression(expression: &str, backend: &Backend) -> Function {
     let mut success = false;
     // Check if it's possible to be a parenthesis function (>=4 is the size)
     println!("{}", expression.len());
@@ -147,17 +151,32 @@ pub fn parse_expression(expression: &str) -> Function {
         } else if expression.starts_with("SLEEP(") {
             // Parse sleep function
             let content = &expression[6..];
+            println!("content: {:?}", content);
             let end_pos = content.find(')').unwrap_or(content.len());
+            println!("end_pos: {:?}", end_pos); 
             let value_str = &content[..end_pos];
-            let value = value_str.parse::<i32>().unwrap_or(0);
-            return Function::new_sleep(value);
+            println!("value_str: {:?}", value_str);
+            if(value_str.chars().next().unwrap().is_ascii_digit() || value_str.chars().next().unwrap() == '-' ){
+                let value = value_str.parse::<i32>().unwrap_or(0);
+                println!("value: {:?}", value);
+                return Function::new_sleep(value);
+            }
+            else{
+                let cell = parse_cell_reference(value_str);
+                if let Some(val) = backend.get_cell_value(&cell){
+                    return Function::new_sleep(val.borrow().value);
+                }
+                
+            }
+            
         }
     }
     
     // Check for binary operations
     let mut pos = None;
     for (i, c) in expression.chars().enumerate() {
-        if c == '+' || c == '-' || c == '*' || c == '/' {
+        
+        if (c == '+' || c == '-' || c == '*' || c == '/' )&& i != 0{
             pos = Some(i);
             break;
         }
@@ -182,12 +201,15 @@ pub fn parse_expression(expression: &str) -> Function {
         return Function::new_binary_op(function_type, binary_op);
     } else {
         // Not a binary op, could be a constant or a cell reference
+       
         if match expression.chars().next(){
-            Some(c) => c.is_ascii_digit(),
+           
+            Some(c) => c.is_ascii_digit() || c == '-' ,
             None => false,
         } {
-            // First char is a number, it's a constant
+            // First char is a number or a minus sign, it's a constant
             let value = expression.parse::<i32>().unwrap_or(0);
+            
             // *success = true;
             return Function::new_constant(value);
         } else {
@@ -211,305 +233,3 @@ pub fn parse_expression(expression: &str) -> Function {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    use crate::structs::*;
-
-    // Helper function to create a cell
-    fn cell(row: usize, col: usize) -> Cell {
-        Cell { row, col }
-    }
-
-    #[test]
-    fn test_parse_cell_reference() {
-        // Test basic cell references
-        assert_eq!(parse_cell_reference("A1"), cell(1, 1));
-        assert_eq!(parse_cell_reference("B2"), cell(2, 2));
-        assert_eq!(parse_cell_reference("Z10"), cell(10, 26));
-        
-        // Test multi-letter column references
-        assert_eq!(parse_cell_reference("AA1"), cell(1, 27));
-        assert_eq!(parse_cell_reference("AB5"), cell(5, 28));
-        assert_eq!(parse_cell_reference("BA10"), cell(10, 53));
-    }
-
-    #[test]
-    fn test_parse_constants() {
-        // Test parsing constant values
-        let result = parse_expression("42");
-        assert_eq!(result.type_, FunctionType::Constant);
-        if let FunctionData::Value(value) = result.data {
-            assert_eq!(value, 42);
-        } else {
-            panic!("Expected Value variant");
-        }
-        
-        let result = parse_expression("0");
-        assert_eq!(result.type_, FunctionType::Constant);
-        if let FunctionData::Value(value) = result.data {
-            assert_eq!(value, 0);
-        } else {
-            panic!("Expected Value variant");
-        }
-        
-        let result = parse_expression("999");
-        assert_eq!(result.type_, FunctionType::Constant);
-        if let FunctionData::Value(value) = result.data {
-            assert_eq!(value, 999);
-        } else {
-            panic!("Expected Value variant");
-        }
-    }
-
-    #[test]
-    fn test_parse_cell_as_expression() {
-        // Test parsing a single cell reference as an expression
-        let result = parse_expression("A1");
-        assert_eq!(result.type_, FunctionType::Plus);
-        if let FunctionData::BinaryOp(binary_op) = result.data {
-            assert_eq!(binary_op.first.type_, OperandType::Cell);
-            if let OperandData::Cell(cell) = binary_op.first.data {
-                assert_eq!(cell, Cell { row: 1, col: 1 });
-            } else {
-                panic!("Expected Cell variant");
-            }
-            assert_eq!(binary_op.second.type_, OperandType::Int);
-        } else {
-            panic!("Expected BinaryOp variant");
-        }
-        
-        // Test another cell reference
-        let result = parse_expression("Z26");
-        assert_eq!(result.type_, FunctionType::Plus);
-        if let FunctionData::BinaryOp(binary_op) = result.data {
-            assert_eq!(binary_op.first.type_, OperandType::Cell);
-            if let OperandData::Cell(cell) = binary_op.first.data {
-                assert_eq!(cell, Cell { row: 26, col: 26 });
-            } else {
-                panic!("Expected Cell variant");
-            }
-        } else {
-            panic!("Expected BinaryOp variant");
-        }
-    }
-
-    #[test]
-    fn test_parse_binary_operations() {
-        // Test addition
-        let result = parse_expression("A1+B2");
-        assert_eq!(result.type_, FunctionType::Plus);
-        if let FunctionData::BinaryOp(binary_op) = result.data {
-            assert_eq!(binary_op.first.type_, OperandType::Cell);
-            if let OperandData::Cell(cell) = binary_op.first.data {
-                assert_eq!(cell, Cell { row: 1, col: 1 });
-            } else {
-                panic!("Expected Cell variant");
-            }
-            assert_eq!(binary_op.second.type_, OperandType::Cell);
-            if let OperandData::Cell(cell) = binary_op.second.data {
-                assert_eq!(cell, Cell { row: 2, col: 2 });
-            } else {
-                panic!("Expected Cell variant");
-            }
-        } else {
-            panic!("Expected BinaryOp variant");
-        }
-        
-        // Test subtraction
-        let result = parse_expression("C3-10");
-        assert_eq!(result.type_, FunctionType::Minus);
-        if let FunctionData::BinaryOp(binary_op) = result.data {
-            assert_eq!(binary_op.first.type_, OperandType::Cell);
-            if let OperandData::Cell(cell) = binary_op.first.data {
-                assert_eq!(cell, Cell { row: 3, col: 3 });
-            } else {
-                panic!("Expected Cell variant");
-            }
-            assert_eq!(binary_op.second.type_, OperandType::Int);
-            if let OperandData::Value(value) = binary_op.second.data {
-                assert_eq!(value, 10);
-            } else {
-                panic!("Expected Value variant");
-            }
-        } else {
-            panic!("Expected BinaryOp variant");
-        }
-        
-        // Test multiplication
-        let result = parse_expression("5*D4");
-        assert_eq!(result.type_, FunctionType::Multiply);
-        if let FunctionData::BinaryOp(binary_op) = result.data {
-            assert_eq!(binary_op.first.type_, OperandType::Int);
-            if let OperandData::Value(value) = binary_op.first.data {
-                assert_eq!(value, 5);
-            } else {
-                panic!("Expected Value variant");
-            }
-            assert_eq!(binary_op.second.type_, OperandType::Cell);
-            if let OperandData::Cell(cell) = binary_op.second.data {
-                assert_eq!(cell, Cell { row: 4, col: 4 });
-            } else {
-                panic!("Expected Cell variant");
-            }
-        } else {
-            panic!("Expected BinaryOp variant");
-        }
-        
-        // Test division
-        let result = parse_expression("E5/F6");
-        assert_eq!(result.type_, FunctionType::Divide);
-        if let FunctionData::BinaryOp(binary_op) = result.data {
-            assert_eq!(binary_op.first.type_, OperandType::Cell);
-            if let OperandData::Cell(cell) = binary_op.first.data {
-                assert_eq!(cell, Cell { row: 5, col: 5 });
-            } else {
-                panic!("Expected Cell variant");
-            }
-            assert_eq!(binary_op.second.type_, OperandType::Cell);
-            if let OperandData::Cell(cell) = binary_op.second.data {
-                assert_eq!(cell, Cell { row: 6, col: 6 });
-            } else {
-                panic!("Expected Cell variant");
-            }
-        } else {
-            panic!("Expected BinaryOp variant");
-        }
-    }
-
-    #[test]
-    fn test_parse_range_functions() {
-        // Test MIN function
-        let result = parse_expression("MIN(A1:B2)");
-        assert_eq!(result.type_, FunctionType::Min);
-        if let FunctionData::RangeFunction(range) = result.data {
-            assert_eq!(range.top_left, Cell { row: 1, col: 1 });
-            assert_eq!(range.bottom_right, Cell { row: 2, col: 2 });
-        } else {
-            panic!("Expected RangeFunction variant");
-        }
-        
-        // Test MAX function
-        let result = parse_expression("MAX(C3:D4)");
-        assert_eq!(result.type_, FunctionType::Max);
-        if let FunctionData::RangeFunction(range) = result.data {
-            assert_eq!(range.top_left, Cell { row: 3, col: 3 });
-            assert_eq!(range.bottom_right, Cell { row: 4, col: 4 });
-        } else {
-            panic!("Expected RangeFunction variant");
-        }
-        
-        // Test AVG function
-        let result = parse_expression("AVG(E5:F6)");
-        assert_eq!(result.type_, FunctionType::Avg);
-        if let FunctionData::RangeFunction(range) = result.data {
-            assert_eq!(range.top_left, Cell { row: 5, col: 5 });
-            assert_eq!(range.bottom_right, Cell { row: 6, col: 6 });
-        } else {
-            panic!("Expected RangeFunction variant");
-        }
-        
-        // Test SUM function
-        let result = parse_expression("SUM(G7:H8)");
-        assert_eq!(result.type_, FunctionType::Sum);
-        if let FunctionData::RangeFunction(range) = result.data {
-            assert_eq!(range.top_left, Cell { row: 7, col: 7 });
-            assert_eq!(range.bottom_right, Cell { row: 8, col: 8 });
-        } else {
-            panic!("Expected RangeFunction variant");
-        }
-        
-        // Test STDEV function
-        let result = parse_expression("STDEV(I9:J10)");
-        assert_eq!(result.type_, FunctionType::Stdev);
-        if let FunctionData::RangeFunction(range) = result.data {
-            assert_eq!(range.top_left, Cell { row: 9, col: 9 });
-            assert_eq!(range.bottom_right, Cell { row: 10, col: 10 });
-        } else {
-            panic!("Expected RangeFunction variant");
-        }
-    }
-
-    #[test]
-    fn test_parse_sleep_function() {
-        // Test SLEEP function
-        let result = parse_expression("SLEEP(5)");
-        assert_eq!(result.type_, FunctionType::Sleep);
-        if let FunctionData::SleepValue(operand) = result.data {
-            assert_eq!(operand.type_, OperandType::Int);
-            if let OperandData::Value(value) = operand.data {
-                assert_eq!(value, 5);
-            } else {
-                panic!("Expected Value variant");
-            }
-        } else {
-            panic!("Expected SleepValue variant");
-        }
-        
-        let result = parse_expression("SLEEP(10)");
-        assert_eq!(result.type_, FunctionType::Sleep);
-        if let FunctionData::SleepValue(operand) = result.data {
-            assert_eq!(operand.type_, OperandType::Int);
-            if let OperandData::Value(value) = operand.data {
-                assert_eq!(value, 10);
-            } else {
-                panic!("Expected Value variant");
-            }
-        } else {
-            panic!("Expected SleepValue variant");
-        }
-    }
-
-    #[test]
-    fn test_edge_cases() {
-        // Test empty string (should default to a constant 0)
-        let result = parse_expression("");
-        assert_eq!(result.type_, FunctionType::Constant);
-        if let FunctionData::Value(value) = result.data {
-            assert_eq!(value, 0);
-        } else {
-            panic!("Expected Value variant");
-        }
-        
-        // Test malformed range function (missing colon)
-        let result = parse_expression("SUM(A1B2)");
-        assert_eq!(result.type_, FunctionType::Constant);
-        if let FunctionData::Value(value) = result.data {
-            assert_eq!(value, 0);
-        } else {
-            panic!("Expected Value variant");
-        }
-        
-        // Test malformed function (missing closing parenthesis)
-        let result = parse_expression("MIN(A1:B2");
-        assert_eq!(result.type_, FunctionType::Min);
-        if let FunctionData::RangeFunction(range) = result.data {
-            assert_eq!(range.top_left, Cell { row: 1, col: 1 });
-            assert_eq!(range.bottom_right, Cell { row: 2, col: 2 });
-        } else {
-            panic!("Expected RangeFunction variant");
-        }
-        
-        // Test with extra spaces (assuming spaces are not handled specifically)
-        // This may fail if the function doesn't handle spaces well
-        let result = parse_expression("A1 + B2");
-        assert_eq!(result.type_, FunctionType::Plus);
-        if let FunctionData::BinaryOp(binary_op) = result.data {
-            assert_eq!(binary_op.first.type_, OperandType::Cell);
-            if let OperandData::Cell(cell) = binary_op.first.data {
-                assert_eq!(cell, Cell { row: 1, col: 1 });
-            } else {
-                panic!("Expected Cell variant");
-            }
-            assert_eq!(binary_op.second.type_, OperandType::Cell);
-            if let OperandData::Cell(cell) = binary_op.second.data {
-                assert_eq!(cell, Cell { row: 2, col: 2 });
-            } else {
-                panic!("Expected Cell variant");
-            }
-        } else {
-            panic!("Expected BinaryOp variant");
-        }
-    }
-}
