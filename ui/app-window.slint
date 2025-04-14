@@ -1,0 +1,176 @@
+import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    // in property <string> results: "";
+    // callback divide_income(string);
+    // in-out property <bool> open_curtain;
+    // animate background {duration: 800ms;}
+
+    width: 800px;
+    height: 600px;
+    GridLayout {
+        Row {
+            // height: 50px;
+            HorizontalLayout {
+                spacing: 5px;
+                Button {
+                    text: "New";
+                    clicked => {
+                        // opens a new spreadsheet
+                    }
+                }
+                Button {
+                    text: "Open";
+                    clicked => {
+                        // opens a file dialog to select a spreadsheet
+                    }
+                }
+                Button {
+                    text: "Save";
+                    clicked => {
+                        // saves the current spreadsheet
+                    }
+                }
+                Button {
+                    text: "Save As";
+                    clicked => {
+                        // opens a file dialog to save the current spreadsheet and can give the name of the spreadsheet 
+                    }
+                }
+                Button {
+                    text: "Undo";
+                    clicked => {
+                        // undoes the last action (last 10(?) actions can be undone)
+                    }
+                }
+                Button {
+                    text: "Redo";
+                    clicked => {
+                        // redoes the last action (last 10(?) actions can be redone)
+                    }
+                }
+            }
+        }
+        Row {
+            GridLayout {
+                padding: 10px;
+                spacing: 2px;
+                columns: 11;
+                Row {
+                    for column_name in ["", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J"] : Rectangle {
+                        border-width: 1px;
+                        border-color: gray;
+                        background: lightgray;
+                        Text {
+                            text: column_name;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+                for row_index in [1,2,3,4,5,6,7,8,9,10,11] : 
+                    Rectangle {
+                        Rectangle {
+                            border-width: 1px;
+                            border-color: gray;
+                            background: lightgray;
+                            Text {
+                                text: row_index.to_string();
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+        
+                        for _ in [1,2,3,4,5,6,7,8,9,10] :
+                            Rectangle {
+                                border-width: 1px;
+                                border-color: gray;
+                                LineEdit {
+                                    text: "";
+                                }
+                            }
+                        
+                    }
+                
+            }
+        }
+    }
+
+
+
+
+
+
+    // GridLayout {
+    //     spacing: 10px;
+    //     Row {
+    //         text := Text {
+    //             text: "Income divider";
+    //             font-size: 24px;
+    //             horizontal-alignment: center;
+    //         }
+    //     }
+    //     Row {
+    //         incomeInput:= LineEdit {
+    //             // id: incomeInput;
+    //             placeholder-text: "Enter your income";
+    //             font-size: 18px;
+    //             // horizontal-alignment: center;
+    //         }
+    //     }
+    //     Row {
+    //         button := Button {
+    //             text: "Calculate";
+    //             clicked => {divide_income(incomeInput.text);} 
+    //         }
+    //     }
+
+    //     Row {
+    //         VerticalBox {
+    //             Rectangle {
+    //                 width: 100%;
+    //                 height: 1px;
+    //                 // color: #000;
+    //                 Text {
+    //                     text: root.results;
+    //                     font-size: 24px;
+    //                     horizontal-alignment: center;
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     Row {
+    //         VerticalBox {
+    //             Rectangle {
+    //                 height: 100px;
+    //                 background: #f2f2f2;
+    //                 Text {
+    //                     text: root.results;
+    //                     font-size: 16px;
+    //                     color: #000000;
+    //                     font-weight: 500;
+    //                 }
+    //                 // Left curtain
+    //                 Rectangle {
+    //                     background: #333333;
+    //                     x: 0px;
+    //                     width: open_curtain ? 0px : (parent.width / 2);
+    //                     height: parent.height;
+    //                     animate width { duration: 250ms; easing: ease-in; }
+    //                 }
+
+    //                 // Right curtain
+    //                 Rectangle {
+    //                     background: #333333;
+    //                     x: open_curtain ? parent.width : (parent.width / 2);
+    //                     width: open_curtain ? 0px : (parent.width / 2);
+    //                     height: parent.height;
+    //                     animate width { duration: 250ms; easing: ease-in; }
+    //                     animate x { duration: 250ms; easing: ease-in; }
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+}

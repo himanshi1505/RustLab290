@@ -3,12 +3,13 @@ use std::time::Duration;
 use std::cmp::{min, max};
 use std::f64;
 use std::collections::HashSet;
+use crate::cell::Cell;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Cell {
-    pub row: i32,
-    pub col: i32,
-}
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+// pub struct Cell {
+//     pub row: i32,
+//     pub col: i32,
+// }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CellError {
