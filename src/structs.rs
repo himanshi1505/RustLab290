@@ -18,6 +18,7 @@ pub enum CellError {
 pub enum ExpressionError {
     CouldNotParse,
     CircularDependency,
+    NoError,
 }
 
 //checked
