@@ -36,5 +36,8 @@ fn main() {
     println!("Initializing with {} rows and {} columns", rows, cols);
     // TODO: Initialize frontend with rows and cols
     // init_frontend(rows, cols);
-    Frontend::new(rows, cols);
+    let mut frontend = Frontend::new(rows, cols);
+    frontend.print_board();
+    frontend.run();
+
 }
