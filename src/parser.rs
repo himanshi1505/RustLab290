@@ -32,8 +32,8 @@ pub fn parse_cell_reference(reference: &str) -> Cell {
         let digits = &reference[i..];
         cell.row = digits.parse().unwrap_or(0);  // Convert digits to row number
     }
-    println!("cell.row: {:?}", cell.row);
-    println!("cell.col: {:?}", cell.col);
+    // println!("cell.row: {:?}", cell.row);
+    // println!("cell.col: {:?}", cell.col);
     cell.row-=1;
     cell.col-=1;
     cell
@@ -131,7 +131,7 @@ fn parse_range_function(expression: &str, function_type: FunctionType) -> Functi
 pub fn parse_expression(expression: &str, backend: &Backend) -> Function {
     let mut success = false;
     // Check if it's possible to be a parenthesis function (>=4 is the size)
-    println!("{}", expression.len());
+    // println!("{}", expression.len());
     if (expression.len() == 0) {
         success = false;
         return Function::new_constant(0);
@@ -151,14 +151,14 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> Function {
         } else if expression.starts_with("SLEEP(") {
             // Parse sleep function
             let content = &expression[6..];
-            println!("content: {:?}", content);
+            // println!("content: {:?}", content);
             let end_pos = content.find(')').unwrap_or(content.len());
-            println!("end_pos: {:?}", end_pos); 
+            // println!("end_pos: {:?}", end_pos); 
             let value_str = &content[..end_pos];
-            println!("value_str: {:?}", value_str);
+            // println!("value_str: {:?}", value_str);
             if(value_str.chars().next().unwrap().is_ascii_digit() || value_str.chars().next().unwrap() == '-' ){
                 let value = value_str.parse::<i32>().unwrap_or(0);
-                println!("value: {:?}", value);
+                // println!("value: {:?}", value);
                 return Function::new_sleep(value);
             }
             else{

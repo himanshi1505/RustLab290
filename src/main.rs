@@ -33,10 +33,10 @@ fn main() {
         process::exit(1);
     }
     if(rows>999 || rows<1 || cols>18278 || cols<1){
-        eprintln!("Invalid argument for rows or columns: {} {}", rows, cols);
+        // eprintln!("Invalid argument for rows or columns: {} {}", rows, cols);
         process::exit(1);
     }
-    println!("Initializing with {} rows and {} columns", rows, cols);
+    // println!("Initializing with {} rows and {} columns", rows, cols);
     // TODO: Initialize frontend with rows and cols
     // init_frontend(rows, cols);
     let mut frontend = Frontend::new(rows, cols);

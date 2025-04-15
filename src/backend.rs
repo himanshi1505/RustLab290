@@ -85,7 +85,7 @@ pub fn is_in_cycle(&mut self, start: &Cell) -> bool {
             
             // First pass: check for cycles and collect cells to process
             for dep in &current_cell_data.dependents {
-                println!("dep: {:?}", dep);
+                // println!("dep: {:?}", dep);
                 // Cycle detected if we return to start cell
                 if let Some(start_data) = self.get_cell_value(start) {
                     if Rc::ptr_eq(dep, start_data) {
@@ -413,7 +413,7 @@ pub fn set_cell_value(
             cell_data.value = new_value;
             cell_data.error = error;
             cell_data.function = new_function;
-            println!("cell_data.value: {:?}", cell_data.value);
+            // println!("cell_data.value: {:?}", cell_data.value);
         }
         
         self.update_graph(&cell, &old_function);
@@ -600,7 +600,7 @@ pub fn set_cell_value(
 
     pub fn sleep_function(&self, operand: &Operand) -> Result<i32, CellError> {
         let value = self.get_operand_value(operand)?;
-        println!("value: {:?}", value);
+        // println!("value: {:?}", value);
         if(value>0){
             thread::sleep(Duration::from_secs(value as u64));
         }
