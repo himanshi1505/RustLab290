@@ -108,20 +108,32 @@ impl Frontend {
                 if self.top_left.row >= MAX_WIDTH {
                     self.top_left.row -= MAX_WIDTH;
                 }
+                else{
+                    self.top_left.row = 0;
+                }
             }
             "s" => {
                 if self.top_left.row + 2 * MAX_WIDTH <= self.rows {
                     self.top_left.row += MAX_WIDTH;
+                }
+                else{
+                    self.top_left.row = self.rows - MAX_WIDTH;
                 }
             }
             "a" => {
                 if self.top_left.col >= MAX_WIDTH {
                     self.top_left.col -= MAX_WIDTH;
                 }
+                else{
+                    self.top_left.col = 0;
+                }
             }
             "d" => {
                 if self.top_left.col + 2 * MAX_WIDTH <= self.cols {
                     self.top_left.col += MAX_WIDTH;
+                }
+                else{
+                    self.top_left.col = self.cols - MAX_WIDTH;
                 }
             }
             cmd if cmd.starts_with("scroll_to ") => {
