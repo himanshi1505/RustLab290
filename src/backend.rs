@@ -428,8 +428,13 @@ pub fn set_cell_value(
             }
         }
         FunctionData::RangeFunction(range) => {
-            if range.top_left.row == cell.row && range.top_left.col == cell.col || range.bottom_right.row == cell.row && range.bottom_right.col == cell.col {
-                return Err(ExpressionError::CircularDependency);
+            // Check all cells in the range
+            for row in range.top_left.row..=range.bottom_right.row {
+                for col in range.top_left.col..=range.bottom_right.col {
+                    if row == cell.row && col == cell.col {
+                        return Err(ExpressionError::CircularDependency);
+                    }
+                }
             }
         }
         FunctionData::SleepValue(operand) => {
