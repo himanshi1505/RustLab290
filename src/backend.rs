@@ -39,6 +39,9 @@ impl Backend {
         self.grid.get(cell.row)?.get(cell.col)
     }
     
+    // pub fn get_cell_error(&self, cell: &Cell) -> CellError {
+    //     self.grid.get()
+    // }
 
     pub fn reset_found(&mut self, start: &Cell) {
         if let Some(cell_data_rc) = self.get_cell_value(start) {
@@ -403,6 +406,8 @@ pub fn set_cell_value(
         (cell_data.function.clone(), cell_data.value)
     };
 
+    
+
     // Handle constant functions early
     if new_function.type_ == FunctionType::Constant {
         let (new_value, error) = self.evaluate_expression(&new_function);
@@ -463,7 +468,7 @@ pub fn set_cell_value(
 
     // Evaluate new value
     let (new_value, error) = self.evaluate_expression(&new_function);
-    
+    // println!("error: {:?}", error);
     // Update cell value in a separate borrow scope
     {
         let mut cell_data = cell_data_rc.borrow_mut();
@@ -488,7 +493,11 @@ pub fn set_cell_value(
                 let cell = Cell { row, col };
                 if let Some(cell_data_rc) = self.get_cell_value(&cell){
                     let cell_data = cell_data_rc.borrow();
-                    min_val = min(min_val, cell_data.value);
+                    match cell_data.error {
+                        CellError::NoError => {min_val = min(min_val, cell_data.value);}
+                        CellError::DivideByZero => return Err(CellError::DivideByZero),
+                        CellError::DependencyError => return Err(CellError::DependencyError),
+                    }
                 }
                 else{
                     return Err(CellError::DependencyError);
@@ -505,7 +514,14 @@ pub fn set_cell_value(
                 let cell = Cell { row, col };
                 if let Some(cell_data_rc) = self.get_cell_value(&cell){
                     let cell_data = cell_data_rc.borrow();
-                    max_val = max(max_val, cell_data.value);
+                    if let Some(cell_data_rc) = self.get_cell_value(&cell){
+                        let cell_data = cell_data_rc.borrow();
+                        match cell_data.error {
+                            CellError::NoError => {max_val = max(max_val, cell_data.value);}
+                            CellError::DivideByZero => return Err(CellError::DivideByZero),
+                            CellError::DependencyError => return Err(CellError::DependencyError),
+                        }
+                    }
                 }
                 else{
                     return Err(CellError::DependencyError);
@@ -523,8 +539,16 @@ pub fn set_cell_value(
                 let cell = Cell { row, col };
                 if let Some(cell_data_rc) = self.get_cell_value(&cell){
                     let cell_data = cell_data_rc.borrow();
-                    sum += cell_data.value;
-                    count += 1;
+                    if let Some(cell_data_rc) = self.get_cell_value(&cell){
+                        let cell_data = cell_data_rc.borrow();
+                        match cell_data.error {
+                            CellError::NoError => {sum += cell_data.value;
+                                count += 1;}
+                            CellError::DivideByZero => return Err(CellError::DivideByZero),
+                            CellError::DependencyError => return Err(CellError::DependencyError),
+                        }
+                    }
+                    
                 }
                 else{
                     return Err(CellError::DependencyError);
@@ -547,7 +571,15 @@ pub fn set_cell_value(
                 let cell = Cell { row, col };
                 if let Some(cell_data_rc) = self.get_cell_value(&cell){
                     let cell_data = cell_data_rc.borrow();
-                    sum += cell_data.value;
+                    if let Some(cell_data_rc) = self.get_cell_value(&cell){
+                        let cell_data = cell_data_rc.borrow();
+                        match cell_data.error {
+                            CellError::NoError => {sum += cell_data.value;}
+                            CellError::DivideByZero => return Err(CellError::DivideByZero),
+                            CellError::DependencyError => return Err(CellError::DependencyError),
+                        }
+                    }
+                    
                     
                 }
                 else{
@@ -569,10 +601,18 @@ pub fn set_cell_value(
                 let cell = Cell { row, col };
                 if let Some(cell_data_rc) = self.get_cell_value(&cell) {
                     let cell_data = cell_data_rc.borrow();
-                    let value = cell_data.value;
-                    values.push(value);
-                    sum += value;
-                    count += 1;
+                    if let Some(cell_data_rc) = self.get_cell_value(&cell){
+                        let cell_data = cell_data_rc.borrow();
+                        match cell_data.error {
+                            CellError::NoError => {let value = cell_data.value;
+                                values.push(value);
+                                sum += value;
+                                count += 1;}
+                            CellError::DivideByZero => return Err(CellError::DivideByZero),
+                            CellError::DependencyError => return Err(CellError::DependencyError),
+                        }
+                    }
+                    
                 } else {
                     return Err(CellError::DependencyError);
                 }
@@ -640,9 +680,37 @@ pub fn set_cell_value(
     }
     fn get_operand_value(&self, operand: &Operand) -> Result<i32, CellError> {
         match operand.data {
-            OperandData::Cell(cell) => self.get_cell_value(&cell)
-                .ok_or(CellError::DependencyError)
-                .map(|d| d.borrow().value),
+            OperandData::Cell(cell) => {
+                // Get the cell data
+                let cell_data_rc = self.get_cell_value(&cell).ok_or(CellError::DependencyError)?;
+                let cell_data = cell_data_rc.borrow();
+    
+                // Check for errors in the cell
+                match cell_data.error {
+                    CellError::NoError => return Ok(cell_data.value),
+                    CellError::DivideByZero => return Err(CellError::DivideByZero),
+                    CellError::DependencyError => return Err(CellError::DependencyError),
+                }
+            }
+                // {let celldata = self.get_cell_value(&cell)
+                // .ok_or(CellError::DependencyError);
+                // // .map(|d| d.borrow().value),
+                // let cellerror = celldata.map(|d| d.borrow().error);
+                // match cellerror with {
+                //     Ok(CellError::NoError) => {let cellvalue = celldata.map(|d| d.borrow().value);
+                //     return cellvalue;},
+                //     Ok(CellError::DivideByZero) => return Err(CellError::DivideByZero),
+                //     Ok(CellError::DependencyError) => return Err(CellError::DependencyError),
+                //     _ => {}
+                // }}
+                // if cellerror != CellError::NoError {
+                //     return Err(cellerror);
+                // }
+                // let cellvalue = celldata.map(|d| d.borrow().value);
+                // // if cellvalue.is_none() {
+                // //     return Err(CellError::DependencyError);
+                // // }
+                // return cellvalue;}
             OperandData::Value(value) => Ok(value),
         }
     }

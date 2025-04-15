@@ -61,11 +61,13 @@ impl Frontend {
                 match cell_data {
                     Some(data) => {
                         let data = data.borrow();
+                        // println!("data.error: {:?}", data.error);
                         match data.error {
                             CellError::NoError => {
                                 print!("{:<width$}", data.value, width = self.cell_width);
                             }
                             _ => {
+                                // println!("in printing ERR");
                                 print!("{:<width$}", "ERR", width = self.cell_width);
                             }
                         }
