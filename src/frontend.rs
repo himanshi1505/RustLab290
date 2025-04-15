@@ -110,26 +110,43 @@ impl Frontend {
                 if self.top_left.row >= MAX_WIDTH {
                     self.top_left.row -= MAX_WIDTH;
                 }
+                else{
+                    self.top_left.row = 0;
+                }
             }
             "s" => {
                 if self.top_left.row + 2 * MAX_WIDTH <= self.rows {
                     self.top_left.row += MAX_WIDTH;
+                }
+                else{
+                    self.top_left.row = self.rows - MAX_WIDTH;
                 }
             }
             "a" => {
                 if self.top_left.col >= MAX_WIDTH {
                     self.top_left.col -= MAX_WIDTH;
                 }
+                else{
+                    self.top_left.col = 0;
+                }
             }
             "d" => {
                 if self.top_left.col + 2 * MAX_WIDTH <= self.cols {
                     self.top_left.col += MAX_WIDTH;
                 }
+                else{
+                    self.top_left.col = self.cols - MAX_WIDTH;
+                }
             }
             cmd if cmd.starts_with("scroll_to ") => {
                 let cell_str = cmd.trim_start_matches("scroll_to ").trim();
-                let cell = parse_cell_reference(cell_str);
-                self.top_left = cell;
+                let (rows, cols) = self.backend.get_rows_col();
+                if let Some(cell) = parse_cell_reference(cell_str, rows, cols) {
+                    self.top_left = cell;
+                }
+                else {
+                    return false;
+                }
             }
             _ => return false,
         }
@@ -140,14 +157,20 @@ impl Frontend {
         if input.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false) {
             if let Some(eq_pos) = input.find('=') {
                 let (cell_str, expr_str) = input.split_at(eq_pos);
-                let cell = parse_cell_reference(cell_str);
-                
-                let expr = &expr_str[1..]; // skip '='
+                let (rows, cols) = self.backend.get_rows_col();
+                if let Some(cell) = parse_cell_reference(cell_str, rows, cols){
+                    let expr = &expr_str[1..]; // skip '='
                 
                 match self.backend.set_cell_value(cell, expr) {
                     Ok(_) => true,
                     Err(_) => false,
                 }
+                }
+                else {
+                    return false;
+                }
+                
+                
             } else {
                 false
             }

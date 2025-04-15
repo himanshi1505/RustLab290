@@ -14,6 +14,9 @@ pub struct Backend {
 }
 
 impl Backend {
+    pub fn get_rows_col(&self) -> (usize, usize) {
+        (self.rows, self.cols)
+    }   
     pub fn new(rows: usize, cols: usize) -> Self {  //init backend
         let mut grid = Vec::new();
     
@@ -433,8 +436,13 @@ pub fn set_cell_value(
             }
         }
         FunctionData::RangeFunction(range) => {
-            if range.top_left.row == cell.row && range.top_left.col == cell.col || range.bottom_right.row == cell.row && range.bottom_right.col == cell.col {
-                return Err(ExpressionError::CircularDependency);
+            // Check all cells in the range
+            for row in range.top_left.row..=range.bottom_right.row {
+                for col in range.top_left.col..=range.bottom_right.col {
+                    if row == cell.row && col == cell.col {
+                        return Err(ExpressionError::CircularDependency);
+                    }
+                }
             }
         }
         FunctionData::SleepValue(operand) => {
@@ -716,7 +724,15 @@ pub fn set_cell_value(
     }
 
     pub fn parse_expression(&self, expression: &str) -> (Function, bool) {
-        (crate::parser::parse_expression(expression, &self), true)
+        crate::parser::parse_expression(expression, &self)
+    }
+
+    pub fn get_rows(&self) -> usize {
+        self.rows
+    }
+
+    pub fn get_cols(&self) -> usize {
+        self.cols
     }
 }
 
@@ -739,4 +755,6 @@ pub fn set_cell_value(
 //     /**
 //      * Useful for DFS
 //      * */
+// } CellData;
+
 // } CellData;
