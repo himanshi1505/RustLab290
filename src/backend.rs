@@ -632,18 +632,18 @@ pub fn set_cell_value(
         }
         
         // Calculate mean
-        let mean = sum / count as i32;
+        let mean = sum / count;
         
         // Second pass: calculate variance
-        let mut variance_sum = 0;
+        let mut variance_sum: f64 = 0.0;
         for value in values {
-            variance_sum += (value - mean).pow(2);
+            variance_sum += ((value - mean) * (value - mean)) as f64;
         }
         
-        let variance = variance_sum / count as i32;
-        
+        let variance = variance_sum / count as f64;
+        // println!("stdev: {:?}", (variance as f64).sqrt() as i32);
         // Return standard deviation as integer (floored)
-        Ok((variance as f64).sqrt() as i32)
+        Ok((variance as f64).sqrt().round() as i32)
     }
 
     pub fn sleep_function(&self, operand: &Operand) -> Result<i32, CellError> {
