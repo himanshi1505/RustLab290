@@ -7,3 +7,6 @@ name = "spreadsheet"
 path = "src/main.rs"
 
 [dependencies]
+leptos = { version = "0.5", features = ["csr"] }
+console_error_panic_hook = "0.1"
+console_log = "1"
