@@ -2,13 +2,19 @@ use crate::structs::*;
 use crate::parser::*;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::thread;
 use std::time::Duration;
 use std::cmp::{min, max};
 use std::f64;
+use std::fs::File;
+use std::io::{BufReader, BufWriter};
+use csv::{ReaderBuilder, WriterBuilder};
 
 pub struct Backend {
-    pub grid: Vec<Vec<Rc<RefCell<CellData>>>>,
+    grid: Vec<Vec<Rc<RefCell<CellData>>>>,
+    undo_stack: VecDeque<Vec<Vec<i32>>>,
+    redo_stack: VecDeque<Vec<Vec<i32>>>,
     rows: usize,
     cols: usize,
 }
@@ -19,7 +25,7 @@ impl Backend {
     }   
     pub fn new(rows: usize, cols: usize) -> Self {  //init backend
         let mut grid = Vec::new();
-    
+       
         for _ in 0..rows {
             let mut row = Vec::new();
             for _ in 0..cols {
@@ -28,7 +34,8 @@ impl Backend {
             grid.push(row);
         }
     
-        Backend { grid, rows, cols }
+        Backend { grid, rows, cols, undo_stack: VecDeque::with_capacity(100),
+            redo_stack: VecDeque::with_capacity(100), }
     }
     pub fn reset(&mut self) {
         for row in &mut self.grid {
@@ -733,6 +740,111 @@ pub fn set_cell_value(
 
     pub fn get_cols(&self) -> usize {
         self.cols
+    }
+    // Save to CSV file
+    pub fn save_to_csv(&self, filename: &str) -> Result<(), csv::Error> {
+        let file = File::create(filename)?;
+        let mut wtr = WriterBuilder::new().from_writer(BufWriter::new(file));
+
+        for row in 0..self.rows {
+            let mut record = Vec::new();
+            for col in 0..self.cols {
+                let cell = Cell { row, col };
+                if let Some(cell_data) = self.get_cell_value(&cell) {
+                    record.push(cell_data.borrow().value.to_string());
+                } else {
+                    record.push(String::new());
+                }
+            }
+            wtr.write_record(&record)?;
+        }
+        wtr.flush()?;
+        Ok(())
+    }
+
+    // Load from CSV file
+    pub fn load_from_csv(&mut self, filename: &str) -> Result<(), csv::Error> {
+        let file = File::open(filename)?;
+        let mut rdr = ReaderBuilder::new()
+            .has_headers(false)
+            .from_reader(BufReader::new(file));
+
+        self.clear_undo_redo();
+        let mut new_state = self.create_snapshot();
+
+        for (row_idx, result) in rdr.records().enumerate() {
+            let record = result?;
+            for (col_idx, field) in record.iter().enumerate() {
+                if row_idx < self.rows && col_idx < self.cols {
+                    let value = field.parse().unwrap_or(0);
+                    new_state[row_idx][col_idx] = value;
+                }
+            }
+        }
+
+        self.push_undo_state();
+        self.apply_snapshot(new_state);
+        Ok(())
+    }
+
+    // Undo last action
+    pub fn undo(&mut self) {
+        if let Some(prev_state) = self.undo_stack.pop_back() {
+            self.redo_stack.push_back(self.create_snapshot());
+            self.apply_snapshot(prev_state);
+        }
+    }
+
+    // Redo last undone action
+    pub fn redo(&mut self) {
+        if let Some(next_state) = self.redo_stack.pop_back() {
+            self.undo_stack.push_back(self.create_snapshot());
+            self.apply_snapshot(next_state);
+        }
+    }
+
+    // Helper: Create snapshot of current state
+    fn create_snapshot(&self) -> Vec<Vec<i32>> {
+        let mut snapshot = Vec::with_capacity(self.rows);
+        for row in 0..self.rows {
+            let mut row_data = Vec::with_capacity(self.cols);
+            for col in 0..self.cols {
+                let cell = Cell { row, col };
+                row_data.push(
+                    self.get_cell_value(&cell)
+                        .map(|c| c.borrow().value)
+                        .unwrap_or(0),
+                );
+            }
+            snapshot.push(row_data);
+        }
+        snapshot
+    }
+
+    // Helper: Apply state snapshot
+    fn apply_snapshot(&mut self, snapshot: Vec<Vec<i32>>) {
+        for (row_idx, row) in snapshot.iter().enumerate() {
+            for (col_idx, &value) in row.iter().enumerate() {
+                let cell = Cell { row: row_idx, col: col_idx };
+                if let Some(cell_data) = self.get_cell_value(&cell) {
+                    cell_data.borrow_mut().value = value;
+                }
+            }
+        }
+    }
+
+    // Helper: Clear undo/redo stacks
+    fn clear_undo_redo(&mut self) {
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+    }
+
+    // Helper: Save current state to undo stack
+    fn push_undo_state(&mut self) {
+        if self.undo_stack.len() >= 100 {
+            self.undo_stack.pop_front();
+        }
+        self.undo_stack.push_back(self.create_snapshot());
     }
 }
 
