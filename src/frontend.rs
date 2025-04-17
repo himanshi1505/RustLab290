@@ -1,9 +1,9 @@
 use crate::backend::*;
 use crate::parser::*;
 use crate::structs::*;
+use std::cmp::{max, min};
 use std::io::{self, Write};
 use std::time::Instant;
-use std::cmp::{min, max};
 
 const MAX_WIDTH: usize = 10;
 
@@ -49,7 +49,11 @@ impl Frontend {
 
         print!("{:<width$}", "", width = self.cell_width);
         for col in self.top_left.col..(self.top_left.col + col_width) {
-            print!("{:<width$}", Self::number_to_column_header(col), width = self.cell_width);
+            print!(
+                "{:<width$}",
+                Self::number_to_column_header(col),
+                width = self.cell_width
+            );
         }
         println!();
 
@@ -87,7 +91,11 @@ impl Frontend {
         let mut i = 0;
         while i < chars.len() {
             if chars[i].is_whitespace() {
-                if i > 0 && i + 1 < chars.len() && chars[i - 1].is_alphanumeric() && chars[i + 1].is_alphanumeric() {
+                if i > 0
+                    && i + 1 < chars.len()
+                    && chars[i - 1].is_alphanumeric()
+                    && chars[i + 1].is_alphanumeric()
+                {
                     cleaned.push(' ');
                 }
                 while i < chars.len() && chars[i].is_whitespace() {
@@ -109,32 +117,28 @@ impl Frontend {
             "w" => {
                 if self.top_left.row >= MAX_WIDTH {
                     self.top_left.row -= MAX_WIDTH;
-                }
-                else{
+                } else {
                     self.top_left.row = 0;
                 }
             }
             "s" => {
                 if self.top_left.row + 2 * MAX_WIDTH <= self.rows {
                     self.top_left.row += MAX_WIDTH;
-                }
-                else{
+                } else {
                     self.top_left.row = self.rows - MAX_WIDTH;
                 }
             }
             "a" => {
                 if self.top_left.col >= MAX_WIDTH {
                     self.top_left.col -= MAX_WIDTH;
-                }
-                else{
+                } else {
                     self.top_left.col = 0;
                 }
             }
             "d" => {
                 if self.top_left.col + 2 * MAX_WIDTH <= self.cols {
                     self.top_left.col += MAX_WIDTH;
-                }
-                else{
+                } else {
                     self.top_left.col = self.cols - MAX_WIDTH;
                 }
             }
@@ -143,8 +147,7 @@ impl Frontend {
                 let (rows, cols) = self.backend.get_rows_col();
                 if let Some(cell) = parse_cell_reference(cell_str, rows, cols) {
                     self.top_left = cell;
-                }
-                else {
+                } else {
                     return false;
                 }
             }
@@ -154,23 +157,25 @@ impl Frontend {
     }
 
     fn run_command(&mut self, input: &str) -> bool {
-        if input.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false) {
+        if input
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_uppercase())
+            .unwrap_or(false)
+        {
             if let Some(eq_pos) = input.find('=') {
                 let (cell_str, expr_str) = input.split_at(eq_pos);
                 let (rows, cols) = self.backend.get_rows_col();
-                if let Some(cell) = parse_cell_reference(cell_str, rows, cols){
+                if let Some(cell) = parse_cell_reference(cell_str, rows, cols) {
                     let expr = &expr_str[1..]; // skip '='
-                
-                match self.backend.set_cell_value(cell, expr) {
-                    Ok(_) => true,
-                    Err(_) => false,
-                }
-                }
-                else {
+
+                    match self.backend.set_cell_value(cell, expr) {
+                        Ok(_) => true,
+                        Err(_) => false,
+                    }
+                } else {
                     return false;
                 }
-                
-                
             } else {
                 false
             }
@@ -207,16 +212,6 @@ impl Frontend {
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
 
 // use std::io::{self, Write, BufRead};
 // use std::process::exit;
@@ -268,13 +263,13 @@ impl Frontend {
 //     // Adding 1 to mimic the C implementation (1-based)
 //     let mut num = number + 1;
 //     let mut result = String::new();
-    
+
 //     while num > 0 {
 //         let rem = (num - 1) % 26;
 //         result.insert(0, (b'A' + rem as u8) as char);
 //         num = (num - 1) / 26;
 //     }
-    
+
 //     result
 // }
 
@@ -284,34 +279,34 @@ impl Frontend {
 //         if !STATE.do_print {
 //             return;
 //         }
-        
+
 //         STATE.row_width = min(MAX_WIDTH, STATE.rows - STATE.top_left.row);
 //         STATE.col_width = min(MAX_WIDTH, STATE.cols - STATE.top_left.col);
-        
+
 //         // Print empty cell at top-left corner
 //         print!("{:<width$}", "", width = STATE.cell_width);
-        
+
 //         let max_col = STATE.top_left.col + STATE.col_width - 1;
 //         let max_row = STATE.top_left.row + STATE.row_width - 1;
-        
+
 //         // Print column headers
 //         for i in STATE.top_left.col..=max_col {
 //             let header = number_to_column_header(i);
 //             print!("{:<width$}", header, width = STATE.cell_width);
 //         }
 //         println!();
-        
+
 //         // Print rows
 //         for i in STATE.top_left.row..=max_row {
 //             // Print row number
 //             print!("{:<width$}", i + 1, width = STATE.cell_width);
-            
+
 //             // Print cells
 //             for j in STATE.top_left.col..=max_col {
 //                 let mut error = CellError::NoError;
 //                 let cell = Cell { row: i, col: j };
 //                 let value = backend::get_cell_value(cell, &mut error);
-                
+
 //                 if error != CellError::NoError {
 //                     print!("{:<width$}", "ERR", width = STATE.cell_width);
 //                 } else {
@@ -328,11 +323,11 @@ impl Frontend {
 //     let chars: Vec<char> = s.chars().collect();
 //     let mut result = Vec::new();
 //     let mut i = 0;
-    
+
 //     while i < chars.len() {
 //         if chars[i].is_whitespace() {
 //             // Check if we need to keep a space (alphanumeric on both sides)
-//             if !result.is_empty() && result[result.len() - 1].is_alphanumeric() 
+//             if !result.is_empty() && result[result.len() - 1].is_alphanumeric()
 //                && i + 1 < chars.len() && chars[i + 1].is_alphanumeric() {
 //                 result.push(' ');
 //             }
@@ -345,7 +340,7 @@ impl Frontend {
 //             i += 1;
 //         }
 //     }
-    
+
 //     result.into_iter().collect()
 // }
 
@@ -382,7 +377,7 @@ impl Frontend {
 //             }
 //             return true;
 //         }
-        
+
 //         // Handle other commands
 //         if command == "disable_output" {
 //             STATE.do_print = false;
@@ -409,16 +404,16 @@ impl Frontend {
 //     if expression.is_empty() {
 //         return true;
 //     }
-    
+
 //     let chars: Vec<char> = expression.chars().collect();
 //     for i in 1..chars.len() {
-//         if chars[i].is_whitespace() && 
-//            i > 0 && chars[i-1].is_alphanumeric() && 
+//         if chars[i].is_whitespace() &&
+//            i > 0 && chars[i-1].is_alphanumeric() &&
 //            i+1 < chars.len() && chars[i+1].is_alphanumeric() {
 //             return true;
 //         }
 //     }
-    
+
 //     false
 // }
 
@@ -435,17 +430,17 @@ impl Frontend {
 //                 }
 //                 cell_len += 1;
 //             }
-            
+
 //             // Parse cell reference
 //             if let Ok(cell) = parse_cell_reference(&command[..cell_len]) {
 //                 // Check if the next character is '='
 //                 if command.len() > cell_len && command.chars().nth(cell_len) == Some('=') {
 //                     // Extract the expression after '='
 //                     let expression = &command[cell_len + 1..];
-                    
+
 //                     // Parse and set the cell value
 //                     let err = backend::set_cell_value(cell, expression);
-                    
+
 //                     match err {
 //                         ExpressionError::None => true,
 //                         _ => false
@@ -476,28 +471,28 @@ impl Frontend {
 // fn run_console() -> ! {
 //     let mut status = "ok".to_string();
 //     let mut time_taken = 0.0;
-    
+
 //     loop {
 //         print!("[{:.1}] ({}) > ", time_taken, status);
 //         io::stdout().flush().unwrap();
-        
+
 //         let buffer = get_line();
 //         let start = Instant::now();
-        
+
 //         let clean_buffer = remove_spaces(&buffer);
 //         if clean_buffer.is_empty() {
 //             continue;
 //         }
-        
+
 //         if run_command(&clean_buffer) {
 //             status = "ok".to_string();
 //         } else {
 //             status = "err".to_string();
 //         }
-        
+
 //         let end = Instant::now();
 //         time_taken = (end - start).as_secs_f64();
-        
+
 //         print_board();
 //     }
 // }
@@ -508,34 +503,16 @@ impl Frontend {
 //         STATE.rows = row;
 //         STATE.cols = col;
 //         backend::init_backend(row, col);
-        
+
 //         STATE.top_left.row = 0;
 //         STATE.top_left.col = 0;
 //         STATE.row_width = min(MAX_WIDTH, row);
 //         STATE.col_width = min(MAX_WIDTH, col);
-        
+
 //         print_board();
 //         run_console();
 //     }
 // }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // // use crate::cell::Cell;
 
@@ -543,7 +520,6 @@ impl Frontend {
 // // static mut ROWS : i32 = 0;
 // // static mut COLS : i32 = 0;
 // // static mut TOP_LEFT: Cell = Cell { row: 0, col: 0 };
-
 
 // // fn number_to_column_header(mut number: i32) -> String {
 // //     number = number + 1;
@@ -592,9 +568,8 @@ impl Frontend {
 // //     }
 // // }
 
-
 // // fn init_frontend(row:i32, col: i32) {
-    
+
 // // }
 
 // // fn main() {

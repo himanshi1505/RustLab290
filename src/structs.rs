@@ -1,5 +1,5 @@
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cell {
@@ -44,7 +44,6 @@ pub struct Operand {
 }
 //checked
 
-
 // impl Operand {
 //     pub fn new_cell(cell: Cell) -> Self {
 //         Operand {
@@ -62,7 +61,7 @@ pub struct Operand {
 //         }
 //     }
 // }
-//not currently required 
+//not currently required
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BinaryOp {
@@ -87,7 +86,7 @@ pub enum FunctionType {
     Sum,
     Stdev,
     Sleep,
-    Plus,    // Identity function can be written as A1+0
+    Plus, // Identity function can be written as A1+0
     Minus,
     Multiply,
     Divide,
@@ -119,14 +118,15 @@ pub struct Function {
 impl Function {
     //what to do when it matches with none
     pub fn new_range_function(type_: FunctionType, range: RangeFunction) -> Self {
-        assert!(matches!(type_, 
-            FunctionType::Min | 
-            FunctionType::Max | 
-            FunctionType::Avg | 
-            FunctionType::Sum | 
-            FunctionType::Stdev
+        assert!(matches!(
+            type_,
+            FunctionType::Min
+                | FunctionType::Max
+                | FunctionType::Avg
+                | FunctionType::Sum
+                | FunctionType::Stdev
         ));
-        
+
         Function {
             type_,
             data: FunctionData::RangeFunction(range),
@@ -134,13 +134,14 @@ impl Function {
     }
 
     pub fn new_binary_op(type_: FunctionType, op: BinaryOp) -> Self {
-        assert!(matches!(type_,
-            FunctionType::Plus |
-            FunctionType::Minus |
-            FunctionType::Multiply |
-            FunctionType::Divide
+        assert!(matches!(
+            type_,
+            FunctionType::Plus
+                | FunctionType::Minus
+                | FunctionType::Multiply
+                | FunctionType::Divide
         ));
-        
+
         Function {
             type_,
             data: FunctionData::BinaryOp(op),
@@ -173,7 +174,7 @@ pub struct CellData {
     pub error: CellError,
     pub dirty_parents: i32,
 }
-impl Default for CellData{
+impl Default for CellData {
     fn default() -> Self {
         CellData {
             value: 0,
@@ -187,5 +188,3 @@ impl Default for CellData{
         }
     }
 }
-
-

@@ -1,10 +1,9 @@
-use crate::structs::*;
 use crate::backend::Backend;
-
+use crate::structs::*;
 
 // fn convert_to_int(expression: &str) -> i32 {
 //     let mut result = 0;
-    
+
 //     for c in expression.chars() {
 //         if c >= '0' && c <= '9' {
 //             result = result * 10 + (c as i32 - '0' as i32);
@@ -12,7 +11,7 @@ use crate::backend::Backend;
 //             break;
 //         }
 //     }
-    
+
 //     result
 // }
 
@@ -20,39 +19,39 @@ pub fn parse_cell_reference(reference: &str, rows: usize, cols: usize) -> Option
     let mut cell = Cell { row: 0, col: 0 };
     let chars: Vec<char> = reference.chars().collect();
     let mut i = 0;
-    
+
     // Must start with a letter
     if chars.is_empty() || !chars[0].is_ascii_uppercase() {
         return None;
     }
-    
+
     // Parse column (letters)
     while i < chars.len() && chars[i].is_ascii_uppercase() {
         cell.col = cell.col * 26 + (chars[i] as usize - 'A' as usize + 1);
         i += 1;
     }
-    
+
     // Must have at least one number after letters
     if i >= chars.len() || !chars[i].is_ascii_digit() {
         return None;
     }
-    
+
     // Parse row (numbers)
     let digits = &reference[i..];
     match digits.parse() {
         Ok(row) => cell.row = row,
         Err(_) => return None,
     }
-    
+
     // Convert to 0-based indexing
     cell.row -= 1;
     cell.col -= 1;
-    
+
     // Check if cell is within grid bounds
     if cell.row >= rows || cell.col >= cols {
         return None;
     }
-    
+
     Some(cell)
 }
 
@@ -73,19 +72,19 @@ pub fn parse_binary_op(operand1: &str, operand2: &str, backend: &Backend) -> Bin
         }
         Operand {
             type_: OperandType::Int,
-            data: OperandData::Value(value)
+            data: OperandData::Value(value),
         }
     } else {
         // Assume it's a cell reference
         match parse_cell_reference(operand1, backend.get_rows_col().0, backend.get_rows_col().1) {
             Some(cell) => Operand {
                 type_: OperandType::Cell,
-                data: OperandData::Cell(cell)
+                data: OperandData::Cell(cell),
             },
             None => Operand {
                 type_: OperandType::Int,
-                data: OperandData::Value(0)
-            }
+                data: OperandData::Value(0),
+            },
         }
     };
 
@@ -105,68 +104,73 @@ pub fn parse_binary_op(operand1: &str, operand2: &str, backend: &Backend) -> Bin
         }
         Operand {
             type_: OperandType::Int,
-            data: OperandData::Value(value)
+            data: OperandData::Value(value),
         }
     } else {
         // Assume it's a cell reference
         match parse_cell_reference(operand2, backend.get_rows_col().0, backend.get_rows_col().1) {
             Some(cell) => Operand {
                 type_: OperandType::Cell,
-                data: OperandData::Cell(cell)
+                data: OperandData::Cell(cell),
             },
             None => Operand {
                 type_: OperandType::Int,
-                data: OperandData::Value(0)
-            }
+                data: OperandData::Value(0),
+            },
         }
     };
 
     BinaryOp { first, second }
 }
 
-fn parse_range_function(expression: &str, function_type: FunctionType, backend: &Backend) -> (Function, bool) {
+fn parse_range_function(
+    expression: &str,
+    function_type: FunctionType,
+    backend: &Backend,
+) -> (Function, bool) {
     let start_pos = match function_type {
         FunctionType::Stdev => 6, // "STDEV("
-        _ => 4,                  // "MIN(", "MAX(", "AVG(", "SUM("
+        _ => 4,                   // "MIN(", "MAX(", "AVG(", "SUM("
     };
-    
+
     let content = &expression[start_pos..];
     let end_pos = match content.find(')') {
         Some(pos) => pos,
         None => return (Function::new_constant(0), false),
     };
     let range_str = &content[..end_pos];
-    
+
     if let Some(separator_pos) = range_str.find(':') {
         let top_left_str = &range_str[..separator_pos];
-        let bottom_right_str = &range_str[separator_pos+1..];
-        
-        let top_left = match parse_cell_reference(top_left_str, backend.get_rows(), backend.get_cols()) {
-            Some(cell) => cell,
-            None => return (Function::new_constant(0), false),
-        };
-        let bottom_right = match parse_cell_reference(bottom_right_str, backend.get_rows(), backend.get_cols()) {
-            Some(cell) => cell,
-            None => return (Function::new_constant(0), false),
-        };
-        
+        let bottom_right_str = &range_str[separator_pos + 1..];
+
+        let top_left =
+            match parse_cell_reference(top_left_str, backend.get_rows(), backend.get_cols()) {
+                Some(cell) => cell,
+                None => return (Function::new_constant(0), false),
+            };
+        let bottom_right =
+            match parse_cell_reference(bottom_right_str, backend.get_rows(), backend.get_cols()) {
+                Some(cell) => cell,
+                None => return (Function::new_constant(0), false),
+            };
+
         // Check if range is valid (top_left <= bottom_right)
         if top_left.row > bottom_right.row || top_left.col > bottom_right.col {
             return (Function::new_constant(0), false);
         }
-        
+
         let range = RangeFunction {
             top_left,
             bottom_right,
         };
-        
+
         return (Function::new_range_function(function_type, range), true);
     }
-    
+
     // Default return if parsing fails
     (Function::new_constant(0), false)
 }
-
 
 //success param was not being used so removed it
 pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool) {
@@ -197,48 +201,51 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
                 Some(pos) => pos,
                 None => return (Function::new_constant(0), false),
             };
-            // println!("end_pos: {:?}", end_pos); 
+            // println!("end_pos: {:?}", end_pos);
             let value_str = &content[..end_pos];
             // println!("value_str: {:?}", value_str);
-            if value_str.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '-') {
+            if value_str
+                .chars()
+                .next()
+                .map_or(false, |c| c.is_ascii_digit() || c == '-')
+            {
                 match value_str.parse::<i32>() {
                     Ok(value) => return (Function::new_sleep(value), true),
                     Err(_) => return (Function::new_constant(0), false),
                 }
             } else {
-                let cell = match parse_cell_reference(value_str, backend.get_rows(), backend.get_cols()) {
-                    Some(cell) => cell,
-                    None => return (Function::new_constant(0), false),
-                };
+                let cell =
+                    match parse_cell_reference(value_str, backend.get_rows(), backend.get_cols()) {
+                        Some(cell) => cell,
+                        None => return (Function::new_constant(0), false),
+                    };
                 if let Some(val) = backend.get_cell_value(&cell) {
                     return (Function::new_sleep(val.borrow().value), true);
                 }
             }
-            
         }
     }
-    
+
     // Check for binary operations
     let mut pos = None;
     for (i, c) in expression.chars().enumerate() {
-        
-        if (c == '+' || c == '-' || c == '*' || c == '/' )&& i != 0{
+        if (c == '+' || c == '-' || c == '*' || c == '/') && i != 0 {
             pos = Some(i);
             break;
         }
     }
-    
+
     if let Some(i) = pos {
         // This is a binary operation
-        let operator = match expression.chars().nth(i) { 
+        let operator = match expression.chars().nth(i) {
             Some(op) => op,
             None => return (Function::new_constant(0), false),
         };
         let operand1 = &expression[..i];
-        let operand2 = &expression[i+1..];
-        
+        let operand2 = &expression[i + 1..];
+
         let binary_op = parse_binary_op(operand1, operand2, backend);
-        
+
         let function_type = match operator {
             '+' => FunctionType::Plus,
             '-' => FunctionType::Minus,
@@ -250,10 +257,9 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
         return (Function::new_binary_op(function_type, binary_op), success);
     } else {
         // Not a binary op, could be a constant or a cell reference
-       
-        if match expression.chars().next(){
-           
-            Some(c) => c.is_ascii_digit() || c == '-' ,
+
+        if match expression.chars().next() {
+            Some(c) => c.is_ascii_digit() || c == '-',
             None => false,
         } {
             // First char is a number or a minus sign, it's a constant
@@ -263,25 +269,28 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
             }
         } else {
             // Parse as cell reference
-            let cell = match parse_cell_reference(expression, backend.get_rows(), backend.get_cols()) {
-                Some(cell) => cell,
-                None => return (Function::new_constant(0), false),
-            };
+            let cell =
+                match parse_cell_reference(expression, backend.get_rows(), backend.get_cols()) {
+                    Some(cell) => cell,
+                    None => return (Function::new_constant(0), false),
+                };
             let operand1 = Operand {
                 type_: OperandType::Cell,
-                data: OperandData::Cell(cell)
+                data: OperandData::Cell(cell),
             };
             let operand2 = Operand {
                 type_: OperandType::Int,
-                data: OperandData::Value(0)
+                data: OperandData::Value(0),
             };
             let binary_op = BinaryOp {
                 first: operand1,
                 second: operand2,
             };
             success = true;
-            return (Function::new_binary_op(FunctionType::Plus, binary_op), success);
+            return (
+                Function::new_binary_op(FunctionType::Plus, binary_op),
+                success,
+            );
         }
     }
 }
-
