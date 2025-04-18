@@ -3,7 +3,7 @@
 use leptos::*;
 use log::Level; // <-- FIXED: from the `log` crate
 use crate::backend::Backend;
-use crate::components::{Toolbar, FormulaBar, SpreadsheetGrid};
+use crate::components::{Toolbar, FormulaBar, SpreadsheetGrid, CommandBar};
 
 #[component]
 fn App() -> impl IntoView {
@@ -12,6 +12,7 @@ fn App() -> impl IntoView {
             <Toolbar />
             <FormulaBar />
             <SpreadsheetGrid />
+            <CommandBar />
         </main>
     }
 }

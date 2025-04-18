@@ -15,7 +15,7 @@ pub fn SpreadsheetGrid() -> impl IntoView {
                     {columns.iter().map(|col| view! {
                         <th>
                             {col.to_string()}
-                            <button class="filter-sort-button">'V'</button>
+                            <button class="filter-sort-button">V</button>
                         </th>
                     }).collect_view()}
                 </tr>
