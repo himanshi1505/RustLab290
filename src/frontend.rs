@@ -60,11 +60,10 @@ impl Frontend {
         for row in self.top_left.row..(self.top_left.row + row_width) {
             print!("{:<width$}", row + 1, width = self.cell_width);
             for col in self.top_left.col..(self.top_left.col + col_width) {
-                let cell = Cell { row, col };
-                let cell_data = self.backend.get_cell_value(&cell);
-                match cell_data {
-                    Some(data) => {
-                        let data = data.borrow();
+               
+                unsafe{let data = self.backend.get_cell_value(row,col);
+           
+                       
                         // println!("data.error: {:?}", data.error);
                         match data.error {
                             CellError::NoError => {
@@ -75,11 +74,9 @@ impl Frontend {
                                 print!("{:<width$}", "ERR", width = self.cell_width);
                             }
                         }
-                    }
-                    None => {
-                        print!("{:<width$}", "ERR", width = self.cell_width);
-                    }
-                }
+                    
+                    } 
+                
             }
             println!();
         }
