@@ -1,5 +1,7 @@
+#[cfg(feature = "gui")]
 use leptos::*;
 
+#[cfg(feature = "gui")]
 #[component]
 pub fn Toolbar() -> impl IntoView {
     view! {

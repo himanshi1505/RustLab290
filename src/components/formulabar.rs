@@ -1,5 +1,7 @@
+#[cfg(feature = "gui")]
 use leptos::*;
 
+#[cfg(feature = "gui")]
 #[component]
 pub fn FormulaBar() -> impl IntoView {
     let (formula, set_formula) = create_signal("".to_string());
