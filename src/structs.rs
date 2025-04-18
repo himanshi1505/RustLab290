@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -169,16 +169,17 @@ impl Function {
 #[derive(Debug)]
 pub struct CellData {
     pub value: i32,
-    pub dependents: Vec<Rc<RefCell<CellData>>>,
+    pub dependents: UnsafeCell<Vec<*const CellData>>,
     pub function: Function,
     pub error: CellError,
     pub dirty_parents: i32,
 }
+
 impl Default for CellData {
     fn default() -> Self {
         CellData {
             value: 0,
-            dependents: Vec::new(),
+            dependents: UnsafeCell::new(Vec::new()),
             function: Function {
                 type_: FunctionType::Constant,
                 data: FunctionData::Value(0),

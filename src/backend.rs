@@ -1,6 +1,6 @@
 use crate::parser::*;
 use crate::structs::*;
-use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::cmp::{max, min};
 use std::collections::VecDeque;
 use std::f64;
@@ -8,13 +8,14 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::rc::Rc;
 use std::thread;
+use std::ptr::eq;
 use std::time::Duration;
 
 #[cfg(feature = "gui")]
 use csv::{ReaderBuilder, WriterBuilder};
 
 pub struct Backend {
-    grid: Vec<Vec<Rc<RefCell<CellData>>>>,
+    grid: UnsafeCell<Vec<Vec<CellData>>>,
     undo_stack: VecDeque<Vec<Vec<i32>>>,
     redo_stack: VecDeque<Vec<Vec<i32>>>,
     rows: usize,
@@ -26,272 +27,277 @@ impl Backend {
         (self.rows, self.cols)
     }
     pub fn new(rows: usize, cols: usize) -> Self {
-        //init backend
-        let mut grid = Vec::new();
-
-        for _ in 0..rows {
-            let mut row = Vec::new();
-            for _ in 0..cols {
-                row.push(Rc::new(RefCell::new(CellData::default())));
+        let mut grid = Vec::with_capacity(rows);
+        for row in 0..rows {
+            let mut row_vec = Vec::with_capacity(cols);
+            for col in 0..cols {
+                row_vec.push(CellData {
+                    value: 0,
+                    dependents: UnsafeCell::new(Vec::new()),
+                    function: Function::new_constant(0),
+                    error: CellError::NoError,
+                    dirty_parents: 0,
+                });
             }
-            grid.push(row);
+            grid.push(row_vec);
         }
 
         Backend {
-            grid,
-            rows,
-            cols,
+            grid: UnsafeCell::new(grid),
             undo_stack: VecDeque::with_capacity(100),
             redo_stack: VecDeque::with_capacity(100),
+            rows,
+            cols,
         }
     }
     pub fn reset(&mut self) {
-        for row in &mut self.grid {
+        let grid = unsafe { &mut *self.grid.get() };
+        for row in grid {
             for cell in row {
-                *cell = Rc::new(RefCell::new(CellData::default()));
+                *cell = CellData::default();
             }
         }
     }
 
-    pub fn get_cell_value(&self, cell: &Cell) -> Option<&Rc<RefCell<CellData>>> {
-        self.grid.get(cell.row)?.get(cell.col)
+    // Unsafe mutable access
+    pub unsafe fn get_cell_value(&self, row:usize,col:usize) -> &mut CellData {
+        let grid = unsafe { &mut *self.grid.get() };
+        &mut grid[row][col]
     }
+
 
     // pub fn get_cell_error(&self, cell: &Cell) -> CellError {
     //     self.grid.get()
     // }
-
     pub fn reset_found(&mut self, start: &Cell) {
-        if let Some(cell_data_rc) = self.get_cell_value(start) {
-            let mut cell_data = cell_data_rc.borrow_mut();
-            cell_data.dirty_parents = 0;
-            drop(cell_data);
-            let mut stack = vec![Rc::clone(cell_data_rc)];
+        unsafe {
+            let start_cell = self.get_cell_value(start.row, start.col) ;
+                start_cell.dirty_parents = 0;
+                let mut stack = vec![start_cell];
 
-            while let Some(current_rc) = stack.pop() {
-                let current = current_rc.borrow();
+                while let Some(current) = stack.pop() {
+                    let deps = &mut *current.dependents.get();
+                    for &dep_ptr in deps.iter() {
+                        if dep_ptr.is_null() {
+                            continue;
+                        }
 
-                for dep_rc in &current.dependents {
-                    let mut dep = dep_rc.borrow_mut();
-                    if dep.dirty_parents > 0 {
-                        dep.dirty_parents = 0;
-                        stack.push(Rc::clone(dep_rc));
+                        let dep = &mut *(dep_ptr as *mut CellData);
+
+                        if dep.dirty_parents > 0 {
+                            dep.dirty_parents = 0;
+                            stack.push(dep);
+                        }
                     }
                 }
-            }
+            
         }
     }
 
     /// Checks if setting this cell creates a circular dependency
-    pub fn is_in_cycle(&mut self, start: &Cell) -> bool {
+    pub fn check_circular_dependency(&mut self, start: &Cell) -> bool {
         let mut found_cycle = false;
 
-        // Mark starting cell as visited
-        if let Some(cell_data_rc) = self.get_cell_value(start) {
-            let mut stack = vec![Rc::clone(cell_data_rc)];
-            let mut cell_data = cell_data_rc.borrow_mut();
-            cell_data.dirty_parents = 1;
-            drop(cell_data);
-
-            while let Some(current_rc) = stack.pop() {
-                // Get all dependents of current cell
-
-                let current_cell_data = current_rc.borrow();
-                // To avoid borrow checker issues, collect cells to process first
-                let mut deps_to_check = Vec::new();
-                let mut cycle_detected = false;
-
-                // First pass: check for cycles and collect cells to process
-                for dep in &current_cell_data.dependents {
-                    // println!("dep: {:?}", dep);
-                    // Cycle detected if we return to start cell
-                    if let Some(start_data) = self.get_cell_value(start) {
-                        if Rc::ptr_eq(dep, start_data) {
-                            cycle_detected = true;
-                            break;
-                        }
-                    }
-                    deps_to_check.push(dep);
+        unsafe {
+        let start_cell = self.get_cell_value(start.row, start.col);
+        let start_cell_ptr = start_cell as *const CellData;
+        let mut stack = vec![start_cell_ptr];
+        unsafe { (*start_cell).dirty_parents = 1; }
+        
+        while let Some(current_ptr) = stack.pop() {
+            let current = unsafe { &*current_ptr };
+            let deps = &*current.dependents.get();
+        
+            // First pass: check for cycles and collect new deps to process
+            let mut deps_to_check = Vec::new();
+            for &dep_ptr in deps.iter() {
+                if dep_ptr.is_null() {
+                    continue;
                 }
-
-                if cycle_detected {
+        
+                if std::ptr::eq(dep_ptr, start_cell_ptr) {
                     found_cycle = true;
                     break;
                 }
+        
+                deps_to_check.push(dep_ptr);
+            }
 
-                // Second pass: process unvisited cells
-                for dep in deps_to_check {
-                    let mut dep_data = dep.borrow_mut();
-                    if dep_data.dirty_parents == 0 {
-                        dep_data.dirty_parents = 1;
-                        stack.push(Rc::clone(dep));
+                    if found_cycle {
+                        break;
                     }
-                }
+
+                    // Second pass: push unvisited deps
+                    for dep_ptr in deps_to_check {
+                        let dep = &mut *(dep_ptr as *mut CellData);
+                        if dep.dirty_parents == 0 {
+                            dep.dirty_parents = 1;
+                            stack.push(dep);
+                        }
+                    }
+                
             }
         }
-        // Reset visited markers
+
         self.reset_found(start);
         found_cycle
     }
 
-    pub fn check_circular_dependency(&mut self, cell: &Cell) -> bool {
-        self.is_in_cycle(cell)
-    }
 
     pub fn update_graph(&mut self, cell: &Cell, old_function: &Function) {
-        // Remove old dependencies
-        if let Some(cell_data_rc) = self.get_cell_value(cell) {
-            match &old_function.data {
-                FunctionData::RangeFunction(range) => {
-                    // Remove from all cells in old range
-
-                    for row in range.top_left.row..=range.bottom_right.row {
-                        for col in range.top_left.col..=range.bottom_right.col {
-                            let parent_cell = Cell { row, col };
-                            if let Some(parent_data_rc) = self.get_cell_value(&parent_cell) {
-                                let mut parent_data = parent_data_rc.borrow_mut();
-                                parent_data
-                                    .dependents
-                                    .retain(|c| !Rc::ptr_eq(c, cell_data_rc));
+        unsafe {
+            // Remove old dependencies
+            let cell_data = self.get_cell_value(cell.row,cell.col); 
+                let cell_ptr = cell_data as *const CellData;
+    
+                match &old_function.data {
+                    FunctionData::RangeFunction(range) => {
+                        for row in range.top_left.row..=range.bottom_right.row {
+                            for col in range.top_left.col..=range.bottom_right.col {
+                              
+                                 let parent_data = self.get_cell_value(row,col);
+                                    let deps = &mut *parent_data.dependents.get();
+                                    deps.retain(|&ptr| !std::ptr::eq(ptr, cell_ptr));
+                                
                             }
                         }
                     }
-                }
-                FunctionData::BinaryOp(bin_op) => {
-                    // Remove first operand dependency
-                    if let OperandData::Cell(dep) = bin_op.first.data {
-                        if let Some(parent_data_rc) = self.get_cell_value(&dep) {
-                            let mut parent_data = parent_data_rc.borrow_mut();
-                            parent_data
-                                .dependents
-                                .retain(|c| !Rc::ptr_eq(c, cell_data_rc));
+    
+                    FunctionData::BinaryOp(bin_op) => {
+                        if let OperandData::Cell(dep) = bin_op.first.data {
+                            let parent_data = self.get_cell_value(dep.row,dep.col);
+                                let deps = &mut *parent_data.dependents.get();
+                                deps.retain(|&ptr| !std::ptr::eq(ptr, cell_ptr));
+                            
+                        }
+                        if let OperandData::Cell(dep) = bin_op.second.data {
+                            let parent_data = self.get_cell_value(dep.row,dep.col);
+                                let deps = &mut *parent_data.dependents.get();
+                                deps.retain(|&ptr| !std::ptr::eq(ptr, cell_ptr));
+                            
                         }
                     }
-                    // Remove second operand dependency
-                    if let OperandData::Cell(dep) = bin_op.second.data {
-                        if let Some(parent_data_rc) = self.get_cell_value(&dep) {
-                            let mut parent_data = parent_data_rc.borrow_mut();
-                            parent_data
-                                .dependents
-                                .retain(|c| !Rc::ptr_eq(c, cell_data_rc));
+    
+                    FunctionData::SleepValue(operand) => {
+                        if let OperandData::Cell(dep) = operand.data {
+                            let parent_data = self.get_cell_value(dep.row,dep.col);
+                                let deps = &mut *parent_data.dependents.get();
+                                deps.retain(|&ptr| !std::ptr::eq(ptr, cell_ptr));
+                            
                         }
                     }
-                }
-                FunctionData::SleepValue(operand) => {
-                    if let OperandData::Cell(dep) = operand.data {
-                        if let Some(parent_data_rc) = self.get_cell_value(&dep) {
-                            let mut parent_data = parent_data_rc.borrow_mut();
-                            parent_data
-                                .dependents
-                                .retain(|c| !Rc::ptr_eq(c, cell_data_rc));
-                        }
-                    }
-                }
-                FunctionData::Value(_) => {} // Constants have no dependencies
+    
+                    FunctionData::Value(_) => {} // No dependencies to remove
+                
             }
-        }
-
-        // Add new dependencies
-        if let Some(cell_data_rc) = self.get_cell_value(cell) {
-            let mut cell_data = cell_data_rc.borrow_mut();
-
-            match &cell_data.function.data {
-                FunctionData::RangeFunction(range) => {
-                    // Add to all cells in new range
-                    for row in range.top_left.row..=range.bottom_right.row {
-                        for col in range.top_left.col..=range.bottom_right.col {
-                            let parent_cell = Cell { row, col };
-                            if let Some(parent_data_rc) = self.get_cell_value(&parent_cell) {
-                                let mut parent_data = parent_data_rc.borrow_mut();
-                                parent_data.dependents.push(Rc::clone(&cell_data_rc));
+    
+            // Add new dependencies
+            
+                let cell_ptr = cell_data as *const CellData;
+    
+                match &cell_data.function.data {
+                    FunctionData::RangeFunction(range) => {
+                        for row in range.top_left.row..=range.bottom_right.row {
+                            for col in range.top_left.col..=range.bottom_right.col {
+                               
+                                 let parent_data= self.get_cell_value(row,col) ;
+                                    let deps = &mut *parent_data.dependents.get();
+                                    deps.push(cell_ptr);
+                                
                             }
                         }
                     }
-                }
-                FunctionData::BinaryOp(bin_op) => {
-                    // Add first operand dependency
-                    if let OperandData::Cell(dep) = bin_op.first.data {
-                        if let Some(parent_data_rc) = self.get_cell_value(&dep) {
-                            let mut parent_data = parent_data_rc.borrow_mut();
-                            parent_data.dependents.push(Rc::clone(&cell_data_rc));
+    
+                    FunctionData::BinaryOp(bin_op) => {
+                        if let OperandData::Cell(dep) = bin_op.first.data {
+                            let parent_data = self.get_cell_value(dep.row,dep.col);
+                                let deps = &mut *parent_data.dependents.get();
+                                deps.push(cell_ptr);
+                            
+                        }
+                        if let OperandData::Cell(dep) = bin_op.second.data {
+                            let parent_data = self.get_cell_value(dep.row,dep.col);
+                                let deps = &mut *parent_data.dependents.get();
+                                deps.push(cell_ptr);
+                            
                         }
                     }
-                    // Add second operand dependency
-                    if let OperandData::Cell(dep) = bin_op.second.data {
-                        if let Some(parent_data_rc) = self.get_cell_value(&dep) {
-                            let mut parent_data = parent_data_rc.borrow_mut();
-                            parent_data.dependents.push(Rc::clone(&cell_data_rc));
+    
+                    FunctionData::SleepValue(operand) => {
+                        if let OperandData::Cell(dep) = operand.data {
+                            let parent_data = self.get_cell_value(dep.row,dep.col);
+                                let deps = &mut *parent_data.dependents.get();
+                                deps.push(cell_ptr);
+                            
                         }
                     }
-                }
-                FunctionData::SleepValue(operand) => {
-                    if let OperandData::Cell(dep) = operand.data {
-                        if let Some(parent_data_rc) = self.get_cell_value(&dep) {
-                            let mut parent_data = parent_data_rc.borrow_mut();
-                            parent_data.dependents.push(Rc::clone(&cell_data_rc));
-                        }
-                    }
-                }
-                FunctionData::Value(_) => {} // Constants have no dependencies
+    
+                    FunctionData::Value(_) => {} // No dependencies to add
+                
             }
         }
     }
+    
 
     /// Sets dirty parent counts for topological sorting
     //check if stack has the copied values or references??
-
-    pub fn set_dirty_parents(&mut self, cell: &Cell, stack: &mut Vec<Rc<RefCell<CellData>>>) {
-        if let Some(root_data_rc) = self.get_cell_value(cell) {
-            let mut root_data = root_data_rc.borrow_mut();
-            root_data.dirty_parents = 0;
-            stack.push(Rc::clone(root_data_rc));
-            drop(root_data);
-
-            while let Some(current_rc) = stack.pop() {
-                let current = current_rc.borrow();
-
-                for child_data_rc in &current.dependents {
-                    let mut child_data = child_data_rc.borrow_mut();
-                    if (child_data.dirty_parents) == 0 {
-                        stack.push(Rc::clone(child_data_rc));
+    pub fn set_dirty_parents(&mut self, cell: &Cell, stack: &mut Vec<*mut CellData>) {
+        unsafe { let root_data = self.get_cell_value(cell.row,cell.col) ;
+            let root_ptr = root_data as *mut CellData;
+    
+            
+                (*root_ptr).dirty_parents = 0;
+                stack.push(root_ptr);
+    
+                while let Some(current_ptr) = stack.pop() {
+                    for &child_ptr in &*(*current_ptr).dependents.get() {
+                        let child_mut_ptr = child_ptr as *mut CellData;
+                        if (*child_mut_ptr).dirty_parents == 0 {
+                            stack.push(child_mut_ptr);
+                        }
+                        (*child_mut_ptr).dirty_parents += 1;
                     }
-                    child_data.dirty_parents += 1;
-                }
+                
             }
         }
     }
+    
+    
 
     /// Recursively update dependent cells using topological sort
     pub fn update_dependents(&mut self, cell: &Cell) {
-        let mut stack = Vec::new();
-        self.set_dirty_parents(cell, &mut stack);
-
+        let mut dirty_stack = Vec::new();
+        self.set_dirty_parents(cell, &mut dirty_stack);
+    
         let mut process_stack = Vec::new();
-        if let Some(cell_data_rc) = self.get_cell_value(cell) {
-            for child_data_rc in &cell_data_rc.borrow_mut().dependents {
-                let mut child_data = child_data_rc.borrow_mut();
-                child_data.dirty_parents -= 1;
-                if child_data.dirty_parents == 0 {
-                    process_stack.push(Rc::clone(child_data_rc));
+    
+        unsafe {  let cell_data = self.get_cell_value(cell.row,cell.col) ;{
+           
+                for &child_ptr in &*cell_data.dependents.get() {
+                    let child_mut_ptr = child_ptr as *mut CellData;
+                    (*child_mut_ptr).dirty_parents -= 1;
+                    if (*child_mut_ptr).dirty_parents == 0 {
+                        process_stack.push(child_mut_ptr);
+                    }
                 }
-            }
-        }
-
-        while let Some(current_data_rc) = process_stack.pop() {
-            let mut current_data = current_data_rc.borrow_mut();
-            let (new_value, error) = self.evaluate_expression(&current_data.function);
-            current_data.value = new_value;
-            current_data.error = error;
-
-            for dependent_data_rc in &current_data.dependents {
-                let mut dependent_data = dependent_data_rc.borrow_mut();
-                dependent_data.dirty_parents -= 1;
-                if dependent_data.dirty_parents == 0 {
-                    process_stack.push(Rc::clone(dependent_data_rc));
+    
+                while let Some(current_ptr) = process_stack.pop() {
+                    let (new_value, error) = self.evaluate_expression(&(*current_ptr).function);
+                    (*current_ptr).value = new_value;
+                    (*current_ptr).error = error;
+    
+                    for &dependent_ptr in &*(*current_ptr).dependents.get() {
+                        let dependent_mut_ptr = dependent_ptr as *mut CellData;
+                        (*dependent_mut_ptr).dirty_parents -= 1;
+                        if (*dependent_mut_ptr).dirty_parents == 0 {
+                            process_stack.push(dependent_mut_ptr);
+                        }
+                    }
                 }
             }
         }
     }
+    
 
     /// Checks if this function can be safely replaced with a constant value
     pub fn is_expression_constant(&self, func: &Function) -> bool {
@@ -370,110 +376,89 @@ impl Backend {
         if !success {
             return Err(ExpressionError::CouldNotParse);
         }
+    
+        // Get a mutable reference to the target cell
+        unsafe { let cell_data = self
+            .get_cell_value(cell.row,cell.col);
 
-        // Get cell data
-        let cell_data_rc = self
-            .get_cell_value(&cell)
-            .ok_or(ExpressionError::CouldNotParse)?;
-        let cell_data_rc = Rc::clone(&cell_data_rc); // Clone the Rc to avoid borrow issues
-
-        // Extract old state with a scoped borrow
-        let (old_function, old_value) = {
-            let cell_data = cell_data_rc.borrow();
-            (cell_data.function.clone(), cell_data.value)
-        };
-
-        // Handle constant functions early
-        if new_function.type_ == FunctionType::Constant {
-            let (new_value, error) = self.evaluate_expression(&new_function);
-
-            // Update cell in a single mutable borrow
-            {
-                let mut cell_data = cell_data_rc.borrow_mut();
-                cell_data.value = new_value;
-                cell_data.error = error;
-                cell_data.function = new_function;
-                // println!("cell_data.value: {:?}", cell_data.value);
+        let cell_ptr = cell_data as *mut CellData;
+    
+      
+            // Copy old state
+            let old_function = (*cell_ptr).function.clone();
+            let old_value = (*cell_ptr).value;
+    
+            // Handle constant function early
+            if new_function.type_ == FunctionType::Constant {
+                let (new_value, error) = self.evaluate_expression(&new_function);
+                (*cell_ptr).value = new_value;
+                (*cell_ptr).error = error;
+                (*cell_ptr).function = new_function;
+    
+                self.update_graph(&cell, &old_function);
+                self.update_dependents(&cell);
+                return Ok(());
             }
-
-            self.update_graph(&cell, &old_function);
-            self.update_dependents(&cell);
-            return Ok(());
-        }
-        //iterate through the new rhs cells and if any of them is equal to lhs, then return error circular dependency
-        match &new_function.data {
-            FunctionData::BinaryOp(bin_op) => {
-                if bin_op.first.data == OperandData::Cell(cell)
-                    || bin_op.second.data == OperandData::Cell(cell)
-                {
-                    return Err(ExpressionError::CircularDependency);
+    
+            // Detect self-reference in new function
+            match &new_function.data {
+                FunctionData::BinaryOp(bin_op) => {
+                    if bin_op.first.data == OperandData::Cell(cell)
+                        || bin_op.second.data == OperandData::Cell(cell)
+                    {
+                        return Err(ExpressionError::CircularDependency);
+                    }
                 }
-            }
-            FunctionData::RangeFunction(range) => {
-                // Check all cells in the range
-                for row in range.top_left.row..=range.bottom_right.row {
-                    for col in range.top_left.col..=range.bottom_right.col {
-                        if row == cell.row && col == cell.col {
-                            return Err(ExpressionError::CircularDependency);
+                FunctionData::RangeFunction(range) => {
+                    for row in range.top_left.row..=range.bottom_right.row {
+                        for col in range.top_left.col..=range.bottom_right.col {
+                            if row == cell.row && col == cell.col {
+                                return Err(ExpressionError::CircularDependency);
+                            }
                         }
                     }
                 }
-            }
-            FunctionData::SleepValue(operand) => {
-                if operand.data == OperandData::Cell(cell) {
-                    return Err(ExpressionError::CircularDependency);
+                FunctionData::SleepValue(operand) => {
+                    if operand.data == OperandData::Cell(cell) {
+                        return Err(ExpressionError::CircularDependency);
+                    }
                 }
+                FunctionData::Value(_) => {}
             }
-            FunctionData::Value(_) => {}
-        }
-        // Update function in a separate borrow scope
-        {
-            let mut cell_data = cell_data_rc.borrow_mut();
-            cell_data.function = new_function.clone();
-        }
-
-        // Update graph with old function
-        self.update_graph(&cell, &old_function);
-
-        // Check for circular dependencies
-        if self.check_circular_dependency(&cell) {
-            // Revert changes in a separate borrow scope
-            {
-                let mut cell_data = cell_data_rc.borrow_mut();
-                cell_data.function = old_function; // No need to clone again
+    
+            // Set new function
+            (*cell_ptr).function = new_function.clone();
+    
+            // Update graph (remove old edges)
+            self.update_graph(&cell, &old_function);
+    
+            // Check circular dependency
+            if self.check_circular_dependency(&cell) {
+                // Revert function
+                (*cell_ptr).function = old_function;
+                self.update_graph(&cell, &new_function); // Reconnect old edges
+                return Err(ExpressionError::CircularDependency);
             }
-
-            self.update_graph(&cell, &new_function);
-            return Err(ExpressionError::CircularDependency);
+    
+            // Evaluate and update value
+            let (new_value, error) = self.evaluate_expression(&new_function);
+            (*cell_ptr).value = if error == CellError::NoError { new_value } else { 0 };
+            (*cell_ptr).error = error;
+    
+            // Propagate to dependents
+            self.update_dependents(&cell);
         }
-
-        // Evaluate new value
-        let (new_value, error) = self.evaluate_expression(&new_function);
-        // println!("error: {:?}", error);
-        // Update cell value in a separate borrow scope
-        {
-            let mut cell_data = cell_data_rc.borrow_mut();
-            cell_data.value = if error == CellError::NoError {
-                new_value
-            } else {
-                0
-            };
-            cell_data.error = error;
-        }
-
-        // Update dependents
-        self.update_dependents(&cell);
-
+    
         Ok(())
     }
-
+    
     pub fn min_function(&self, range: &RangeFunction) -> Result<i32, CellError> {
         let mut min_val = i32::MAX;
         for row in range.top_left.row..=range.bottom_right.row {
             for col in range.top_left.col..=range.bottom_right.col {
                 let cell = Cell { row, col };
-                if let Some(cell_data_rc) = self.get_cell_value(&cell) {
-                    let cell_data = cell_data_rc.borrow();
+               unsafe{  let cell_data= self.get_cell_value(row,col);
+                    
                     match cell_data.error {
                         CellError::NoError => {
                             min_val = min(min_val, cell_data.value);
@@ -481,10 +466,9 @@ impl Backend {
                         CellError::DivideByZero => return Err(CellError::DivideByZero),
                         CellError::DependencyError => return Err(CellError::DependencyError),
                     }
-                } else {
-                    return Err(CellError::DependencyError);
-                }
+                
             }
+        }
         }
         Ok(min_val)
     }
@@ -494,10 +478,9 @@ impl Backend {
         for row in range.top_left.row..=range.bottom_right.row {
             for col in range.top_left.col..=range.bottom_right.col {
                 let cell = Cell { row, col };
-                if let Some(cell_data_rc) = self.get_cell_value(&cell) {
-                    let cell_data = cell_data_rc.borrow();
-                    if let Some(cell_data_rc) = self.get_cell_value(&cell) {
-                        let cell_data = cell_data_rc.borrow();
+               
+                   
+                unsafe{  let cell_data= self.get_cell_value(row,col);
                         match cell_data.error {
                             CellError::NoError => {
                                 max_val = max(max_val, cell_data.value);
@@ -506,9 +489,7 @@ impl Backend {
                             CellError::DependencyError => return Err(CellError::DependencyError),
                         }
                     }
-                } else {
-                    return Err(CellError::DependencyError);
-                }
+                 
             }
         }
         Ok(max_val)
@@ -520,10 +501,9 @@ impl Backend {
         for row in range.top_left.row..=range.bottom_right.row {
             for col in range.top_left.col..=range.bottom_right.col {
                 let cell = Cell { row, col };
-                if let Some(cell_data_rc) = self.get_cell_value(&cell) {
-                    let cell_data = cell_data_rc.borrow();
-                    if let Some(cell_data_rc) = self.get_cell_value(&cell) {
-                        let cell_data = cell_data_rc.borrow();
+               
+                unsafe{  let cell_data= self.get_cell_value(row,col);
+                      
                         match cell_data.error {
                             CellError::NoError => {
                                 sum += cell_data.value;
@@ -532,12 +512,11 @@ impl Backend {
                             CellError::DivideByZero => return Err(CellError::DivideByZero),
                             CellError::DependencyError => return Err(CellError::DependencyError),
                         }
-                    }
-                } else {
-                    return Err(CellError::DependencyError);
-                }
+                    
+                
             }
         }
+    }
         if count == 0 {
             return Err(CellError::DivideByZero);
         }
@@ -549,10 +528,10 @@ impl Backend {
         for row in range.top_left.row..=range.bottom_right.row {
             for col in range.top_left.col..=range.bottom_right.col {
                 let cell = Cell { row, col };
-                if let Some(cell_data_rc) = self.get_cell_value(&cell) {
-                    let cell_data = cell_data_rc.borrow();
-                    if let Some(cell_data_rc) = self.get_cell_value(&cell) {
-                        let cell_data = cell_data_rc.borrow();
+               
+                    
+                        unsafe{  let cell_data= self.get_cell_value(row,col);
+                   
                         match cell_data.error {
                             CellError::NoError => {
                                 sum += cell_data.value;
@@ -561,9 +540,6 @@ impl Backend {
                             CellError::DependencyError => return Err(CellError::DependencyError),
                         }
                     }
-                } else {
-                    return Err(CellError::DependencyError);
-                }
             }
         }
         Ok(sum)
@@ -577,11 +553,9 @@ impl Backend {
         // First pass: collect values and calculate sum
         for row in range.top_left.row..=range.bottom_right.row {
             for col in range.top_left.col..=range.bottom_right.col {
-                let cell = Cell { row, col };
-                if let Some(cell_data_rc) = self.get_cell_value(&cell) {
-                    let cell_data = cell_data_rc.borrow();
-                    if let Some(cell_data_rc) = self.get_cell_value(&cell) {
-                        let cell_data = cell_data_rc.borrow();
+               
+                unsafe{ let cell_data = self.get_cell_value(row,col); 
+                     
                         match cell_data.error {
                             CellError::NoError => {
                                 let value = cell_data.value;
@@ -593,11 +567,10 @@ impl Backend {
                             CellError::DependencyError => return Err(CellError::DependencyError),
                         }
                     }
-                } else {
-                    return Err(CellError::DependencyError);
-                }
+                } 
+        
+            
             }
-        }
 
         if count == 0 {
             return Err(CellError::DivideByZero);
@@ -660,10 +633,9 @@ impl Backend {
         match operand.data {
             OperandData::Cell(cell) => {
                 // Get the cell data
-                let cell_data_rc = self
-                    .get_cell_value(&cell)
-                    .ok_or(CellError::DependencyError)?;
-                let cell_data = cell_data_rc.borrow();
+               unsafe{ let cell_data = self.get_cell_value(cell.row,cell.col);
+                    
+                
 
                 // Check for errors in the cell
                 match cell_data.error {
@@ -671,26 +643,7 @@ impl Backend {
                     CellError::DivideByZero => return Err(CellError::DivideByZero),
                     CellError::DependencyError => return Err(CellError::DependencyError),
                 }
-            }
-            // {let celldata = self.get_cell_value(&cell)
-            // .ok_or(CellError::DependencyError);
-            // // .map(|d| d.borrow().value),
-            // let cellerror = celldata.map(|d| d.borrow().error);
-            // match cellerror with {
-            //     Ok(CellError::NoError) => {let cellvalue = celldata.map(|d| d.borrow().value);
-            //     return cellvalue;},
-            //     Ok(CellError::DivideByZero) => return Err(CellError::DivideByZero),
-            //     Ok(CellError::DependencyError) => return Err(CellError::DependencyError),
-            //     _ => {}
-            // }}
-            // if cellerror != CellError::NoError {
-            //     return Err(cellerror);
-            // }
-            // let cellvalue = celldata.map(|d| d.borrow().value);
-            // // if cellvalue.is_none() {
-            // //     return Err(CellError::DependencyError);
-            // // }
-            // return cellvalue;}
+            }}
             OperandData::Value(value) => Ok(value),
         }
     }

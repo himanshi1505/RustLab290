@@ -219,8 +219,9 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
                         Some(cell) => cell,
                         None => return (Function::new_constant(0), false),
                     };
-                if let Some(val) = backend.get_cell_value(&cell) {
-                    return (Function::new_sleep(val.borrow().value), true);
+                 unsafe{
+                    let val = backend.get_cell_value(cell.row,cell.col);
+                    return (Function::new_sleep(val.value), true);
                 }
             }
         }
