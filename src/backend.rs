@@ -11,15 +11,27 @@ use std::thread;
 use std::ptr::eq;
 use std::time::Duration;
 
-#[cfg(feature = "gui")]
-use csv::{ReaderBuilder, WriterBuilder};
+// #[cfg(feature = "ssr")]
+use csv::{ReaderBuilder, WriterBuilder, Writer};
+// #[cfg(feature = "ssr")]
+use std::error::Error;
+#[cfg(feature = "ssr")]
+use leptos::server;
 
+#[derive(Debug)]
 pub struct Backend {
     grid: UnsafeCell<Vec<Vec<CellData>>>,
     undo_stack: VecDeque<Vec<Vec<i32>>>,
     redo_stack: VecDeque<Vec<Vec<i32>>>,
     rows: usize,
     cols: usize,
+
+    // #[cfg(feature = "ssr")]
+    pub formula_strings: Vec<Vec<String>>,
+    // #[cfg(feature = "ssr")]
+    pub filename: String,
+    // #[cfg(feature = "ssr")]
+    pub copy_stack: Vec<Vec<i32>>,
 }
 
 impl Backend {
@@ -48,6 +60,11 @@ impl Backend {
             redo_stack: VecDeque::with_capacity(100),
             rows,
             cols,
+            // #[cfg(feature = "ssr")]
+            formula_strings: vec![vec!["".to_string(); cols]; rows],
+            // #[cfg(feature = "ssr")]
+            filename: "default.csv".to_string(),
+            copy_stack: vec![vec![0; 1]; 1],
         }
     }
     pub fn reset(&mut self) {
@@ -373,9 +390,11 @@ impl Backend {
     pub fn set_cell_value(&mut self, cell: Cell, expression: &str) -> Result<(), ExpressionError> {
         // Parse the expression
         let (new_function, success) = self.parse_expression(expression);
+        // println!("expression: {:?}", expression);
         if !success {
             return Err(ExpressionError::CouldNotParse);
         }
+        // println!("row: {:?}, col: {:?}", cell.row, cell.col);
     
         // Get a mutable reference to the target cell
         unsafe { let cell_data = self
@@ -392,6 +411,7 @@ impl Backend {
             if new_function.type_ == FunctionType::Constant {
                 let (new_value, error) = self.evaluate_expression(&new_function);
                 (*cell_ptr).value = new_value;
+                // println!("new_value: {:?}", new_value);
                 (*cell_ptr).error = error;
                 (*cell_ptr).function = new_function;
     
@@ -652,6 +672,22 @@ impl Backend {
         crate::parser::parse_expression(expression, &self)
     }
 
+    pub fn parse_load_or_save_cmd(expression: &str) -> Option<String> {
+        crate::parser::parse_load_or_save_cmd(expression)
+    }
+
+    pub fn parse_cut_or_copy(&self, expression: &str) -> Result<(Cell, Cell), Box<dyn std::error::Error>> {
+        crate::parser::parse_cut_or_copy(&self, expression)
+    }
+
+    pub fn parse_paste(&self, expression: &str) -> Result<Cell, Box<dyn std::error::Error>> {
+        crate::parser::parse_paste(&self, expression)
+    }
+
+    pub fn parse_autofill(&self, expression: &str) -> Result<(Cell, Cell, Cell), Box<dyn std::error::Error>> {
+        crate::parser::parse_autofill(&self, expression)
+    }
+
     pub fn get_rows(&self) -> usize {
         self.rows
     }
@@ -660,21 +696,180 @@ impl Backend {
         self.cols
     }
 
-    #[cfg(feature = "gui")]
-    // Save to CSV file
-    pub fn save_to_csv(&self, filename: &str) -> Result<(), csv::Error> {
+    pub fn autofill(&mut self, expression: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let tup = self.parse_autofill(expression);
+        let (tl_cell, br_cell, dest_cell) = match tup {
+            Ok((tl, br, dest)) => (tl, br, dest),
+            Err(err) => return Err(err),
+        };
+        let tl = (tl_cell.row, tl_cell.col);
+        let br = (br_cell.row, br_cell.col);
+        let dest = (dest_cell.row, dest_cell.col);
+        let v = unsafe { self.get_cell_value(tl.0, tl.1).value };
+        let d = unsafe { self.get_cell_value(tl.0, tl.1).value - self.get_cell_value(tl.0 + 1, tl.1 + 1).value };
+        let r  = unsafe { self.get_cell_value(tl.0, tl.1).value as f64 / self.get_cell_value(tl.0 + 1, tl.1 + 1).value as f64 };
+        let mut is_constant = true;
+        let mut is_ap = true;
+        let mut is_gp = true;
+        let grid_ref = unsafe {&*self.grid.get()};
+        for row in tl.0..=br.0 {
+            for col in tl.1..=br.1 {
+                if grid_ref[row][col].value != v {
+                    is_constant = false;
+                    break;
+                }
+            }
+        }
+        if is_constant {
+            for row in br.0+1..=dest.0 {
+                for col in br.1..=dest.1 {
+                    let cell = Cell { row, col };
+                    let res = self.set_cell_value(cell, v.to_string().as_str());
+                    if let Err(err) = res {
+                        println!("Error autofilling value: {:?}", err);
+                    }
+                }
+            }
+            return Ok(());
+        } else {
+            for row in tl.0..=br.0-1 {
+                for col in tl.1..=br.1-1 {
+                    if grid_ref[row][col].value as f64 / grid_ref[row + 1][col + 1].value as f64 != r {
+                        is_gp = false;
+                        break;
+                    }
+                }
+            }
+            if is_gp {
+                for row in br.0+1..=dest.0 {
+                    for col in br.1..=dest.1 {
+                        let cell = Cell { row, col };
+                        let res = self.set_cell_value(cell, &((grid_ref[row - 1][col - 1].value as f64 / r) as i32).to_string());
+                        if let Err(err) = res {
+                            println!("Error autofilling value: {:?}", err);
+                        }
+                    }
+                }
+                return Ok(());
+            }
+            else {
+                for row in tl.0..=br.0-1 {
+                    for col in tl.1..=br.1-1 {
+                        if grid_ref[row][col].value - grid_ref[row + 1][col + 1].value != d {
+                            is_ap = false;
+                            break;
+                        }
+                    }
+                }
+                if is_ap {
+                    for row in br.0+1..=dest.0 {
+                        for col in br.1..=dest.1 {
+                            let cell = Cell { row, col };
+                            let res = self.set_cell_value(cell, &(grid_ref[row - 1][col - 1].value + d).to_string());
+                            if let Err(err) = res {
+                                println!("Error autofilling value: {:?}", err);
+                            }
+                        }
+                    }
+                    return Ok(());
+                }
+                else {
+                    return Err("Autofill not possible".to_string().into());
+                }
+            }
+        }
+    }
+
+    pub fn cut(&mut self, expression: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // println!("cut: {:?}", expression);
+        let tup = self.parse_cut_or_copy(expression);
+        let (tl_cell, br_cell) = match tup {
+            Ok((tl, br)) => (tl, br),
+            Err(err) => return Err(err),
+        };
+        let tl = (tl_cell.row, tl_cell.col);
+        let br = (br_cell.row, br_cell.col);
+        let _ = Backend::copy(self, expression);
+        for row in tl.0..=br.0 {
+            for col in tl.1..=br.1 {
+                // println!("im htregrseznrte");
+                let cell = Cell { row, col };
+                let res = self.set_cell_value(cell, "0");
+                if let Err(err) = res {
+                    println!("Error cutting value: {:?}", err);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn copy(&mut self, expression: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let tup = self.parse_cut_or_copy(expression);
+        let (tl_cell, br_cell) = match tup {
+            Ok((tl, br)) => (tl, br),
+            Err(err) => return Err(err),
+        };
+        let tl = (tl_cell.row, tl_cell.col);
+        let br = (br_cell.row, br_cell.col);
+        let mut copied_data = Vec::new();
+        for row in tl.0..=br.0 {
+            let mut row_data = Vec::new();
+            for col in tl.1..=br.1 {
+                row_data.push(unsafe { self.get_cell_value(row, col).value });
+            }
+            copied_data.push(row_data);
+        }
+        self.copy_stack = copied_data;
+        Ok(())
+    }
+
+    pub fn paste(&mut self, expression: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let celll = self.parse_paste(expression);
+        let tl_cell = match celll {
+            Ok(tl) => tl,
+            Err(err) => return Err(err),
+        };
+        let tl = (tl_cell.row, tl_cell.col);
+        // println!("tl: {:?}", tl);
+        let br = (tl.0 + self.copy_stack.len() - 1, tl.1 + self.copy_stack[0].len() - 1);
+        // println!("br: {:?}", br);
+
+        if br.0 >= self.rows || br.1 >= self.cols {
+            return Err("Paste area exceeds grid size".to_string().into());
+        }
+        for row in tl.0..=br.0 {
+            for col in tl.1..=br.1 {
+                if row < self.rows && col < self.cols {
+                    let cell = Cell { row, col };
+                    // println!("row: {:?}, col: {:?}", row, col);
+                    let res = self.set_cell_value(cell, &self.copy_stack[row - tl.0][col - tl.1].to_string());
+                    if let Err(err) = res {
+                        println!("Error pasting value: {:?}", err);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn save_to_csv(&self, save_cmd: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let filename = match crate::backend::Backend::parse_load_or_save_cmd(save_cmd) {
+            Some(path) => path,
+            None => return Err("Invalid load command".to_string().into()),
+        };
         let file = File::create(filename)?;
         let mut wtr = WriterBuilder::new().from_writer(BufWriter::new(file));
-
+        let grid_ref = self.formula_strings.clone();
         for row in 0..self.rows {
             let mut record = Vec::new();
             for col in 0..self.cols {
-                let cell = Cell { row, col };
-                if let Some(cell_data) = self.get_cell_value(&cell) {
-                    record.push(cell_data.borrow().value.to_string());
-                } else {
-                    record.push(String::new());
-                }
+                unsafe {record.push(self.get_cell_value(row, col).value.to_string())};
+                //FIX KARNA HAI ISKO
+                // record.push(grid_ref[row][col].clone());
+                // unsafe {
+                //     record.push((*self.grid.get().wrapping_add(row).wrapping_add(col))[row][col].value.to_string());
+                // }
+                // println!("row: {}, col: {}, value: {}", row, col, grid_ref[row][col]);
             }
             wtr.write_record(&record)?;
         }
@@ -682,101 +877,215 @@ impl Backend {
         Ok(())
     }
 
-    #[cfg(feature = "gui")]
-    // Load from CSV file
-    pub fn load_from_csv(&mut self, filename: &str) -> Result<(), csv::Error> {
-        let file = File::open(filename)?;
-        let mut rdr = ReaderBuilder::new()
-            .has_headers(false)
-            .from_reader(BufReader::new(file));
+    pub fn load_csv(
+        &mut self,
+        load_cmd: &str,
+        is_header_present: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let csv_path = match crate::backend::Backend::parse_load_or_save_cmd(load_cmd) {
+            Some(path) => path,
+            None => return Err("Invalid load command".to_string().into()),
+        };
+        let reader_result = ReaderBuilder::new().has_headers(is_header_present).from_path(csv_path);
+        let reader = match reader_result {
+            Ok(reader) => reader,
+            Err(err) => return Err(Box::new(err)),
+        };  
 
-        self.clear_undo_redo();
-        let mut new_state = self.create_snapshot();
+        let mut csv_data: Vec<Vec<String>> = Vec::new();
 
-        for (row_idx, result) in rdr.records().enumerate() {
-            let record = result?;
-            for (col_idx, field) in record.iter().enumerate() {
+        for record in reader.into_records() {
+            let record = match record {
+                Ok(record) => record,
+                Err(err) => {
+                    return Err(Box::new(err));
+                }
+            };
+     
+            let row: Vec<String> = record
+                .iter()
+                .map(|field| field.trim().to_string())
+                .collect();
+     
+            csv_data.push(row);        
+        }
+
+        let no_of_rows = csv_data.len();
+        let no_of_cols = csv_data
+            .get(0)
+            .map_or(0, |row| row.len());
+        *self = Backend::new(no_of_rows, no_of_cols);
+        self.get_rows_col().0 = no_of_rows;
+        self.get_rows_col().1 = no_of_cols;
+        // println!("Rows: {}, Cols: {}", self.get_rows_col().0, self.get_rows_col().1);
+
+        for (row_idx, row) in csv_data.iter().enumerate() {
+            for (col_idx, field) in row.iter().enumerate() {
                 if row_idx < self.rows && col_idx < self.cols {
-                    let value = field.parse().unwrap_or(0);
-                    new_state[row_idx][col_idx] = value;
+                    let cell = Cell { row: row_idx, col: col_idx };
+                    let res =  self.set_cell_value(cell, field);
+                    if let Err(err) = res {
+                        return Err("Invalid cell value".to_string().into());
+                    }
                 }
             }
         }
 
-        self.push_undo_state();
-        self.apply_snapshot(new_state);
         Ok(())
     }
 
-    #[cfg(feature = "gui")]
-    // Undo last action
-    pub fn undo(&mut self) {
-        if let Some(prev_state) = self.undo_stack.pop_back() {
-            self.redo_stack.push_back(self.create_snapshot());
-            self.apply_snapshot(prev_state);
-        }
-    }
-
-    #[cfg(feature = "gui")]
-    // Redo last undone action
-    pub fn redo(&mut self) {
-        if let Some(next_state) = self.redo_stack.pop_back() {
-            self.undo_stack.push_back(self.create_snapshot());
-            self.apply_snapshot(next_state);
-        }
-    }
-
-    #[cfg(feature = "gui")]
-    // Helper: Create snapshot of current state
-    fn create_snapshot(&self) -> Vec<Vec<i32>> {
-        let mut snapshot = Vec::with_capacity(self.rows);
+    #[cfg(feature = "ssr")]
+    // #[server]
+    pub fn save_to_csv_internal(&self) -> Result<(), Box<dyn Error>> {
+        let filename = self.filename.clone();
+        let mut wtr = Writer::from_path(filename)?;
+        let grid_ref = self.formula_strings.clone();
         for row in 0..self.rows {
-            let mut row_data = Vec::with_capacity(self.cols);
+            let mut record = Vec::new();
             for col in 0..self.cols {
-                let cell = Cell { row, col };
-                row_data.push(
-                    self.get_cell_value(&cell)
-                        .map(|c| c.borrow().value)
-                        .unwrap_or(0),
-                );
+                record.push(grid_ref[row][col].clone());
             }
-            snapshot.push(row_data);
+            wtr.write_record(&record)?;
         }
-        snapshot
+        wtr.flush()?;
+        Ok(())
     }
 
-    #[cfg(feature = "gui")]
-    // Helper: Apply state snapshot
-    fn apply_snapshot(&mut self, snapshot: Vec<Vec<i32>>) {
-        for (row_idx, row) in snapshot.iter().enumerate() {
-            for (col_idx, &value) in row.iter().enumerate() {
-                let cell = Cell {
-                    row: row_idx,
-                    col: col_idx,
-                };
-                if let Some(cell_data) = self.get_cell_value(&cell) {
-                    cell_data.borrow_mut().value = value;
-                }
-            }
-        }
-    }
-
-    #[cfg(feature = "gui")]
-    // Helper: Clear undo/redo stacks
-    fn clear_undo_redo(&mut self) {
-        self.undo_stack.clear();
-        self.redo_stack.clear();
-    }
-
-    #[cfg(feature = "gui")]
-    // Helper: Save current state to undo stack
-    fn push_undo_state(&mut self) {
-        if self.undo_stack.len() >= 100 {
-            self.undo_stack.pop_front();
-        }
-        self.undo_stack.push_back(self.create_snapshot());
+    #[cfg(feature = "ssr")]
+    // #[server]
+    pub fn save_as_internal(&mut self, filename: &str) -> Result<(), Box<dyn Error>> {
+        self.filename = filename.to_string();
+        self.save_to_csv_internal()
     }
 }
+
+#[cfg(feature = "ssr")]
+use std::cell::RefCell;
+#[cfg(feature = "ssr")]
+use once_cell::unsync::OnceCell;
+
+#[cfg(feature = "ssr")]
+thread_local! {
+    pub static BACKEND: OnceCell<RefCell<Backend>> = OnceCell::new();
+}
+
+    // #[cfg(feature = "gui")]
+    // // Save to CSV file
+    // pub fn save_to_csv(&self, filename: &str) -> Result<(), csv::Error> {
+    //     let file = File::create(filename)?;
+    //     let mut wtr = WriterBuilder::new().from_writer(BufWriter::new(file));
+
+    //     for row in 0..self.rows {
+    //         let mut record = Vec::new();
+    //         for col in 0..self.cols {
+    //             let cell = Cell { row, col };
+    //             if let Some(cell_data) = self.get_cell_value(&cell) {
+    //                 record.push(cell_data.borrow().value.to_string());
+    //             } else {
+    //                 record.push(String::new());
+    //             }
+    //         }
+    //         wtr.write_record(&record)?;
+    //     }
+    //     wtr.flush()?;
+    //     Ok(())
+    // }
+
+    // #[cfg(feature = "gui")]
+    // // Load from CSV file
+    // pub fn load_from_csv(&mut self, filename: &str) -> Result<(), csv::Error> {
+    //     let file = File::open(filename)?;
+    //     let mut rdr = ReaderBuilder::new()
+    //         .has_headers(false)
+    //         .from_reader(BufReader::new(file));
+
+    //     self.clear_undo_redo();
+    //     let mut new_state = self.create_snapshot();
+
+    //     for (row_idx, result) in rdr.records().enumerate() {
+    //         let record = result?;
+    //         for (col_idx, field) in record.iter().enumerate() {
+    //             if row_idx < self.rows && col_idx < self.cols {
+    //                 let value = field.parse().unwrap_or(0);
+    //                 new_state[row_idx][col_idx] = value;
+    //             }
+    //         }
+    //     }
+
+    //     self.push_undo_state();
+    //     self.apply_snapshot(new_state);
+    //     Ok(())
+    // }
+
+    // #[cfg(feature = "gui")]
+    // // Undo last action
+    // pub fn undo(&mut self) {
+    //     if let Some(prev_state) = self.undo_stack.pop_back() {
+    //         self.redo_stack.push_back(self.create_snapshot());
+    //         self.apply_snapshot(prev_state);
+    //     }
+    // }
+
+    // #[cfg(feature = "gui")]
+    // // Redo last undone action
+    // pub fn redo(&mut self) {
+    //     if let Some(next_state) = self.redo_stack.pop_back() {
+    //         self.undo_stack.push_back(self.create_snapshot());
+    //         self.apply_snapshot(next_state);
+    //     }
+    // }
+
+    // #[cfg(feature = "gui")]
+    // // Helper: Create snapshot of current state
+    // fn create_snapshot(&self) -> Vec<Vec<i32>> {
+    //     let mut snapshot = Vec::with_capacity(self.rows);
+    //     for row in 0..self.rows {
+    //         let mut row_data = Vec::with_capacity(self.cols);
+    //         for col in 0..self.cols {
+    //             let cell = Cell { row, col };
+    //             row_data.push(
+    //                 self.get_cell_value(&cell)
+    //                     .map(|c| c.borrow().value)
+    //                     .unwrap_or(0),
+    //             );
+    //         }
+    //         snapshot.push(row_data);
+    //     }
+    //     snapshot
+    // }
+
+    // #[cfg(feature = "gui")]
+    // // Helper: Apply state snapshot
+    // fn apply_snapshot(&mut self, snapshot: Vec<Vec<i32>>) {
+    //     for (row_idx, row) in snapshot.iter().enumerate() {
+    //         for (col_idx, &value) in row.iter().enumerate() {
+    //             let cell = Cell {
+    //                 row: row_idx,
+    //                 col: col_idx,
+    //             };
+    //             if let Some(cell_data) = self.get_cell_value(&cell) {
+    //                 cell_data.borrow_mut().value = value;
+    //             }
+    //         }
+    //     }
+    // }
+
+    // #[cfg(feature = "gui")]
+    // // Helper: Clear undo/redo stacks
+    // fn clear_undo_redo(&mut self) {
+    //     self.undo_stack.clear();
+    //     self.redo_stack.clear();
+    // }
+
+    // #[cfg(feature = "gui")]
+    // // Helper: Save current state to undo stack
+    // fn push_undo_state(&mut self) {
+    //     if self.undo_stack.len() >= 100 {
+    //         self.undo_stack.pop_front();
+    //     }
+    //     self.undo_stack.push_back(self.create_snapshot());
+    // }
+
 
 // typedef struct CellData {
 //     /**

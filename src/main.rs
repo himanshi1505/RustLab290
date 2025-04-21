@@ -1,16 +1,16 @@
 mod backend;
 mod frontend;
-mod cell;
 mod structs;
 mod parser;
 mod components;
+mod server_logic;
 
-#[cfg(feature = "gui")]
+#[cfg(feature = "ssr")]
 mod gui;
 #[cfg(feature = "cli")]
 mod cli;
 
-#[cfg(feature = "gui")]
+#[cfg(feature = "ssr")]
 fn main() {
     gui::main();
 }

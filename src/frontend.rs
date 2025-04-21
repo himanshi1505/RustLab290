@@ -4,6 +4,9 @@ use crate::structs::*;
 use std::cmp::{max, min};
 use std::io::{self, Write};
 use std::time::Instant;
+use std::cell::RefCell;
+use once_cell::unsync::OnceCell;
+use crate::backend;
 
 const MAX_WIDTH: usize = 10;
 
@@ -19,6 +22,11 @@ pub struct Frontend {
 impl Frontend {
     pub fn new(rows: usize, cols: usize) -> Self {
         let backend = Backend::new(rows, cols);
+        #[cfg(feature = "ssr")]
+        BACKEND.with(|cell| {
+            cell.set(RefCell::new(Backend::new(rows, cols)))
+                .expect("Backend already initialized");
+        });
         Self {
             backend,
             rows,
@@ -144,8 +152,52 @@ impl Frontend {
                 let (rows, cols) = self.backend.get_rows_col();
                 if let Some(cell) = parse_cell_reference(cell_str, rows, cols) {
                     self.top_left = cell;
-                } else {
+                } 
+                else {
                     return false;
+                }
+            } 
+            cmd if cmd.starts_with("load(") => {
+                let res = backend::Backend::load_csv(&mut self.backend, cmd, false);
+                match res {
+                    Ok(_) => {return true;}
+                    Err(_) => {return false;}
+                }
+            }
+            cmd if cmd.starts_with("save(") => {
+                let res = backend::Backend::save_to_csv(&self.backend, cmd);
+                match res {
+                    Ok(_) => {return true;}
+                    Err(_) => {return false;}
+                }
+            }
+            cmd if cmd.starts_with("copy(") => {
+                println!("copy");
+                let res = backend::Backend::copy(&mut self.backend, cmd);
+                match res {
+                    Ok(_) => {return true;}
+                    Err(_) => {return false;}
+                }
+            }
+            cmd if cmd.starts_with("cut(") => {
+                let res = backend::Backend::cut(&mut self.backend, cmd);
+                match res {
+                    Ok(_) => {return true;}
+                    Err(_) => {return false;}
+                }
+            }
+            cmd if cmd.starts_with("paste(") => {
+                let res = backend::Backend::paste(&mut self.backend, cmd);
+                match res {
+                    Ok(_) => {return true;}
+                    Err(_) => {return false;}
+                }
+            }
+            cmd if cmd.starts_with("autofill") => {
+                let res = backend::Backend::paste(&mut self.backend, cmd);
+                match res {
+                    Ok(_) => {return true;}
+                    Err(_) => {return false;}
                 }
             }
             _ => return false,
@@ -161,13 +213,24 @@ impl Frontend {
             .unwrap_or(false)
         {
             if let Some(eq_pos) = input.find('=') {
+                let formula = input;
                 let (cell_str, expr_str) = input.split_at(eq_pos);
                 let (rows, cols) = self.backend.get_rows_col();
                 if let Some(cell) = parse_cell_reference(cell_str, rows, cols) {
+                    let row_num = cell.row;
+                    let col_num = cell.col;
+                    self.backend.formula_strings[row_num][col_num] = formula.to_string();
+                    println!("{}", self.backend.formula_strings[row_num][col_num]);
                     let expr = &expr_str[1..]; // skip '='
 
                     match self.backend.set_cell_value(cell, expr) {
-                        Ok(_) => true,
+                        Ok(_) => {
+                            #[cfg(feature = "ssr")]
+                            {
+                                self.backend.formula_strings[rows][cols] = expr_str.to_string();
+                            }
+                            return true;
+                        }
                         Err(_) => false,
                     }
                 } else {

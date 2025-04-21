@@ -15,6 +15,24 @@ use crate::structs::*;
 //     result
 // }
 
+pub fn parse_load_or_save_cmd(
+    expression: &str,
+) -> Option<String> {
+    let start_pos = 5; // "LOAD("
+    let content = &expression[start_pos..];
+    let end_pos = match content.find(')') {
+        Some(pos) => pos,
+        None => return None,
+    };
+    let file_name = &content[..end_pos];
+
+    if file_name.is_empty() {
+        return None;
+    }
+
+    Some(file_name.to_string())
+}
+
 pub fn parse_cell_reference(reference: &str, rows: usize, cols: usize) -> Option<Cell> {
     let mut cell = Cell { row: 0, col: 0 };
     let chars: Vec<char> = reference.chars().collect();
@@ -170,6 +188,106 @@ fn parse_range_function(
 
     // Default return if parsing fails
     (Function::new_constant(0), false)
+}
+
+pub fn parse_autofill(
+    backend: &Backend,
+    expression: &str,
+) -> Result<(Cell, Cell, Cell), Box<dyn std::error::Error>> {
+    // println!("Parsing autofill command: {}", expression);
+    let start_pos = 9; // "AUTOFILL("
+    let content = &expression[start_pos..];
+    let end_pos = match content.find(')') {
+        Some(pos) => pos,
+        None => return Err("Invalid command".to_string().into()),
+    };
+    let range_str = &content[..end_pos];
+
+    if let Some(separator_pos) = range_str.find(':') {
+        let start_str = &range_str[..separator_pos];
+
+        if let Some(comma_pos) = range_str.find(',') {
+            let dest_str = &range_str[comma_pos + 1..];
+            let dest = parse_cell_reference(dest_str, backend.get_rows(), backend.get_cols());
+            let dest_cell = match dest {
+                Some(cell) => cell,
+                None => return Err("Invalid cell reference".to_string().into()),
+            };
+
+            let end_str = &range_str[separator_pos + 1..comma_pos];
+
+            let start = parse_cell_reference(start_str, backend.get_rows(), backend.get_cols());
+            let start_cell = match start {
+                Some(cell) => cell,
+                None => return Err("Invalid cell reference".to_string().into()),
+            };
+            let end = parse_cell_reference(end_str, backend.get_rows(), backend.get_cols());
+            let end_cell = match end {
+                Some(cell) => cell,
+                None => return Err("Invalid cell reference".to_string().into()),
+            };
+            if start.is_some() && end.is_some() && dest.is_some() {
+                return Ok((start_cell, end_cell, dest_cell));
+            }
+        }
+    }  
+
+    return Err("Invalid command".to_string().into());
+}
+
+pub fn parse_cut_or_copy(backend: &Backend, expression: &str) -> Result<(Cell, Cell), Box<dyn std::error::Error>> {
+    // println!("Parsing cut/copy command: {}", expression);
+    let mut start_pos = 4;
+    if expression.starts_with("copy(") {
+        start_pos = 5;
+    }
+
+    let content = &expression[start_pos..];
+    let end_pos = match content.find(')') {
+        Some(pos) => pos,
+        None => return Err("Invalid command".to_string().into()),
+    };
+    let range_str = &content[..end_pos];
+
+    if let Some(separator_pos) = range_str.find(':') {
+        let top_left_str = &range_str[..separator_pos];
+        let bottom_right_str = &range_str[separator_pos + 1..];
+
+        let top_left = parse_cell_reference(top_left_str, backend.get_rows(), backend.get_cols());
+        let top_left_cell = match top_left {
+            Some(cell) => cell,
+            None => return Err("Invalid cell reference".to_string().into()),
+        };
+        let bottom_right = parse_cell_reference(bottom_right_str, backend.get_rows(), backend.get_cols());
+        let bottom_right_cell = match bottom_right {
+            Some(cell) => cell,
+            None => return Err("Invalid cell reference".to_string().into()),
+        };
+
+        if top_left.is_some() && bottom_right.is_some() {
+            return Ok((top_left_cell, bottom_right_cell));
+        }
+    }
+
+    Err("Invalid command".to_string().into())
+}
+
+pub fn parse_paste(backend: &Backend, expression: &str) -> Result<Cell, Box<dyn std::error::Error>> {
+    // println!("Parsing paste command: {}", expression);
+    let start_pos = 6; // "PASTE("
+    let content = &expression[start_pos..];
+    let end_pos = match content.find(')') {
+        Some(pos) => pos,
+        None => return Err("Invalid command".to_string().into()),
+    };
+    let cell_str = &content[..end_pos];
+    let cell = parse_cell_reference(cell_str, backend.get_rows(), backend.get_cols());
+    let cell = match cell {
+        Some(cell) => Ok(cell),
+        None => return Err("Invalid cell reference".to_string().into()),
+    };
+    // println!("Parsed cell: {:?}", cell);
+    cell
 }
 
 //success param was not being used so removed it
