@@ -166,10 +166,10 @@ impl Function {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct CellData {
     pub value: i32,
-    pub dependents: UnsafeCell<Vec<*const CellData>>,
+    pub dependents: Vec<(i32,i32)>,
     pub function: Function,
     pub error: CellError,
     pub dirty_parents: i32,
@@ -179,7 +179,7 @@ impl Default for CellData {
     fn default() -> Self {
         CellData {
             value: 0,
-            dependents: UnsafeCell::new(Vec::new()),
+            dependents: Vec::new(),
             function: Function {
                 type_: FunctionType::Constant,
                 data: FunctionData::Value(0),
