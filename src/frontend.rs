@@ -5,7 +5,7 @@ use std::cmp::{max, min};
 use std::io::{self, Write};
 use std::time::Instant;
 use std::cell::RefCell;
-use once_cell::unsync::OnceCell;
+
 use crate::backend;
 
 const MAX_WIDTH: usize = 10;
@@ -19,6 +19,12 @@ pub struct Frontend {
     top_left: Cell,
 }
 
+#[cfg(feature = "gui")]
+impl PartialEq for Frontend {
+    fn eq(&self, other: &Self) -> bool {
+        self.rows == other.rows && self.cols == other.cols
+    }
+}
 impl Frontend {
     pub fn new(rows: usize, cols: usize) -> Self {
         let backend = Backend::new(rows, cols);
@@ -37,6 +43,13 @@ impl Frontend {
         }
     }
 
+    #[cfg(feature = "gui")]
+    pub fn get_backend_mut(&mut self) -> &mut Backend {
+        &mut self.backend
+    }
+    pub fn get_rows_col(&self) -> (usize,usize) {
+        (self.rows,self.cols)
+    }
     fn number_to_column_header(number: usize) -> String {
         let mut num = number + 1;
         let mut result = String::new();
@@ -205,7 +218,7 @@ impl Frontend {
         true
     }
 
-    fn run_command(&mut self, input: &str) -> bool {
+    pub fn run_command(&mut self, input: &str) -> bool {
         if input
             .chars()
             .next()

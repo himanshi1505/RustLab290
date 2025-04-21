@@ -11,12 +11,10 @@ use std::thread;
 use std::ptr::eq;
 use std::time::Duration;
 
-// #[cfg(feature = "ssr")]
+// #[cfg(feature = "gui")]
 use csv::{ReaderBuilder, WriterBuilder, Writer};
-// #[cfg(feature = "ssr")]
+// #[cfg(feature = "gui")]
 use std::error::Error;
-#[cfg(feature = "ssr")]
-use leptos::server;
 
 #[derive(Debug)]
 pub struct Backend {
@@ -26,11 +24,11 @@ pub struct Backend {
     rows: usize,
     cols: usize,
 
-    // #[cfg(feature = "ssr")]
+    // #[cfg(feature = "gui")]
     pub formula_strings: Vec<Vec<String>>,
-    // #[cfg(feature = "ssr")]
+    // #[cfg(feature = "gui")]
     pub filename: String,
-    // #[cfg(feature = "ssr")]
+    // #[cfg(feature = "gui")]
     pub copy_stack: Vec<Vec<i32>>,
 }
 
@@ -45,7 +43,7 @@ impl Backend {
             for col in 0..cols {
                 row_vec.push(CellData {
                     value: 0,
-                    dependents: UnsafeCell::new(Vec::new()),
+                    dependents: Vec::new(),
                     function: Function::new_constant(0),
                     error: CellError::NoError,
                     dirty_parents: 0,
@@ -60,9 +58,9 @@ impl Backend {
             redo_stack: VecDeque::with_capacity(100),
             rows,
             cols,
-            // #[cfg(feature = "ssr")]
+            // #[cfg(feature = "gui")]
             formula_strings: vec![vec!["".to_string(); cols]; rows],
-            // #[cfg(feature = "ssr")]
+            // #[cfg(feature = "gui")]
             filename: "default.csv".to_string(),
             copy_stack: vec![vec![0; 1]; 1],
         }
@@ -88,30 +86,23 @@ impl Backend {
     // }
     pub fn reset_found(&mut self, start: &Cell) {
         unsafe {
-            let start_cell = self.get_cell_value(start.row, start.col) ;
-                start_cell.dirty_parents = 0;
-                let mut stack = vec![start_cell];
-
-                while let Some(current) = stack.pop() {
-                    let deps = &mut *current.dependents.get();
-                    for &dep_ptr in deps.iter() {
-                        if dep_ptr.is_null() {
-                            continue;
-                        }
-
-                        let dep = &mut *(dep_ptr as *mut CellData);
-
-                        if dep.dirty_parents > 0 {
-                            dep.dirty_parents = 0;
-                            stack.push(dep);
-                        }
+            let start_cell = self.get_cell_value(start.row, start.col);
+            start_cell.dirty_parents = 0;
+            let mut stack = vec![start_cell];
+    
+            while let Some(current) = stack.pop() {
+                let deps = &current.dependents; // Access the dependents vector
+                for &(row, col) in deps.iter() {
+                    let dep = self.get_cell_value(row as usize, col as usize); // Access the dependent cell
+    
+                    if dep.dirty_parents > 0 {
+                        dep.dirty_parents = 0;
+                        stack.push(dep);
                     }
                 }
-            
+            }
         }
     }
-
-    /// Checks if setting this cell creates a circular dependency
     pub fn check_circular_dependency(&mut self, start: &Cell) -> bool {
         let mut found_cycle = false;
 
@@ -123,16 +114,13 @@ impl Backend {
         
         while let Some(current_ptr) = stack.pop() {
             let current = unsafe { &*current_ptr };
-            let deps = &*current.dependents.get();
+            let deps = &current.dependents;
         
             // First pass: check for cycles and collect new deps to process
             let mut deps_to_check = Vec::new();
             for &dep_ptr in deps.iter() {
-                if dep_ptr.is_null() {
-                    continue;
-                }
-        
-                if std::ptr::eq(dep_ptr, start_cell_ptr) {
+               
+                if(dep_ptr.0==start.row as i32 && dep_ptr.1==start.col as i32){ {
                     found_cycle = true;
                     break;
                 }
@@ -145,8 +133,8 @@ impl Backend {
                     }
 
                     // Second pass: push unvisited deps
-                    for dep_ptr in deps_to_check {
-                        let dep = &mut *(dep_ptr as *mut CellData);
+                    for dep_ptr in &deps_to_check {
+                        let dep = self.get_cell_value(dep_ptr.0 as usize, dep_ptr.1 as usize);
                         if dep.dirty_parents == 0 {
                             dep.dirty_parents = 1;
                             stack.push(dep);
@@ -155,130 +143,117 @@ impl Backend {
                 
             }
         }
-
+    }
         self.reset_found(start);
         found_cycle
     }
 
 
+
     pub fn update_graph(&mut self, cell: &Cell, old_function: &Function) {
         unsafe {
             // Remove old dependencies
-            let cell_data = self.get_cell_value(cell.row,cell.col); 
-                let cell_ptr = cell_data as *const CellData;
+            let cell_data = self.get_cell_value(cell.row, cell.col);
     
-                match &old_function.data {
-                    FunctionData::RangeFunction(range) => {
-                        for row in range.top_left.row..=range.bottom_right.row {
-                            for col in range.top_left.col..=range.bottom_right.col {
-                              
-                                 let parent_data = self.get_cell_value(row,col);
-                                    let deps = &mut *parent_data.dependents.get();
-                                    deps.retain(|&ptr| !std::ptr::eq(ptr, cell_ptr));
-                                
-                            }
+            match &old_function.data {
+                FunctionData::RangeFunction(range) => {
+                    for row in range.top_left.row..=range.bottom_right.row {
+                        for col in range.top_left.col..=range.bottom_right.col {
+                            let parent_data = self.get_cell_value(row, col);
+                            let deps = &mut parent_data.dependents;
+                            deps.retain(|&(r, c)| !(r == cell.row as i32 && c == cell.col as i32));
                         }
                     }
+                }
     
-                    FunctionData::BinaryOp(bin_op) => {
-                        if let OperandData::Cell(dep) = bin_op.first.data {
-                            let parent_data = self.get_cell_value(dep.row,dep.col);
-                                let deps = &mut *parent_data.dependents.get();
-                                deps.retain(|&ptr| !std::ptr::eq(ptr, cell_ptr));
-                            
-                        }
-                        if let OperandData::Cell(dep) = bin_op.second.data {
-                            let parent_data = self.get_cell_value(dep.row,dep.col);
-                                let deps = &mut *parent_data.dependents.get();
-                                deps.retain(|&ptr| !std::ptr::eq(ptr, cell_ptr));
-                            
-                        }
+                FunctionData::BinaryOp(bin_op) => {
+                    if let OperandData::Cell(dep) = bin_op.first.data {
+                        let parent_data = self.get_cell_value(dep.row, dep.col);
+                        let deps = &mut parent_data.dependents;
+                        deps.retain(|&(r, c)| !(r == cell.row as i32 && c == cell.col as i32));
                     }
-    
-                    FunctionData::SleepValue(operand) => {
-                        if let OperandData::Cell(dep) = operand.data {
-                            let parent_data = self.get_cell_value(dep.row,dep.col);
-                                let deps = &mut *parent_data.dependents.get();
-                                deps.retain(|&ptr| !std::ptr::eq(ptr, cell_ptr));
-                            
-                        }
+                    if let OperandData::Cell(dep) = bin_op.second.data {
+                        let parent_data = self.get_cell_value(dep.row, dep.col);
+                        let deps = &mut parent_data.dependents;
+                        deps.retain(|&(r, c)| !(r == cell.row as i32 && c == cell.col as i32));
                     }
+                }
     
-                    FunctionData::Value(_) => {} // No dependencies to remove
-                
+                FunctionData::SleepValue(operand) => {
+                    if let OperandData::Cell(dep) = operand.data {
+                        let parent_data = self.get_cell_value(dep.row, dep.col);
+                        let deps = &mut parent_data.dependents;
+                        deps.retain(|&(r, c)| !(r == cell.row as i32 && c == cell.col as i32));
+                    }
+                }
+    
+                FunctionData::Value(_) => {} // No dependencies to remove
             }
     
             // Add new dependencies
-            
-                let cell_ptr = cell_data as *const CellData;
-    
-                match &cell_data.function.data {
-                    FunctionData::RangeFunction(range) => {
-                        for row in range.top_left.row..=range.bottom_right.row {
-                            for col in range.top_left.col..=range.bottom_right.col {
-                               
-                                 let parent_data= self.get_cell_value(row,col) ;
-                                    let deps = &mut *parent_data.dependents.get();
-                                    deps.push(cell_ptr);
-                                
-                            }
+            match &cell_data.function.data {
+                FunctionData::RangeFunction(range) => {
+                    for row in range.top_left.row..=range.bottom_right.row {
+                        for col in range.top_left.col..=range.bottom_right.col {
+                            let parent_data = self.get_cell_value(row, col);
+                            let deps = &mut parent_data.dependents;
+                            deps.push((cell.row as i32, cell.col as i32));
                         }
                     }
+                }
     
-                    FunctionData::BinaryOp(bin_op) => {
-                        if let OperandData::Cell(dep) = bin_op.first.data {
-                            let parent_data = self.get_cell_value(dep.row,dep.col);
-                                let deps = &mut *parent_data.dependents.get();
-                                deps.push(cell_ptr);
-                            
-                        }
-                        if let OperandData::Cell(dep) = bin_op.second.data {
-                            let parent_data = self.get_cell_value(dep.row,dep.col);
-                                let deps = &mut *parent_data.dependents.get();
-                                deps.push(cell_ptr);
-                            
-                        }
+                FunctionData::BinaryOp(bin_op) => {
+                    if let OperandData::Cell(dep) = bin_op.first.data {
+                        let parent_data = self.get_cell_value(dep.row, dep.col);
+                        let deps = &mut parent_data.dependents;
+                        deps.push((cell.row as i32, cell.col as i32));
                     }
-    
-                    FunctionData::SleepValue(operand) => {
-                        if let OperandData::Cell(dep) = operand.data {
-                            let parent_data = self.get_cell_value(dep.row,dep.col);
-                                let deps = &mut *parent_data.dependents.get();
-                                deps.push(cell_ptr);
-                            
-                        }
+                    if let OperandData::Cell(dep) = bin_op.second.data {
+                        let parent_data = self.get_cell_value(dep.row, dep.col);
+                        let deps = &mut parent_data.dependents;
+                        deps.push((cell.row as i32, cell.col as i32));
                     }
+                }
     
-                    FunctionData::Value(_) => {} // No dependencies to add
-                
+                FunctionData::SleepValue(operand) => {
+                    if let OperandData::Cell(dep) = operand.data {
+                        let parent_data = self.get_cell_value(dep.row, dep.col);
+                        let deps = &mut parent_data.dependents;
+                        deps.push((cell.row as i32, cell.col as i32));
+                    }
+                }
+    
+                FunctionData::Value(_) => {} // No dependencies to add
             }
         }
     }
-    
 
     /// Sets dirty parent counts for topological sorting
     //check if stack has the copied values or references??
     pub fn set_dirty_parents(&mut self, cell: &Cell, stack: &mut Vec<*mut CellData>) {
-        unsafe { let root_data = self.get_cell_value(cell.row,cell.col) ;
+        unsafe {
+            let root_data = self.get_cell_value(cell.row, cell.col);
             let root_ptr = root_data as *mut CellData;
     
-            
-                (*root_ptr).dirty_parents = 0;
-                stack.push(root_ptr);
+            (*root_ptr).dirty_parents = 0;
+            stack.push(root_ptr);
     
-                while let Some(current_ptr) = stack.pop() {
-                    for &child_ptr in &*(*current_ptr).dependents.get() {
-                        let child_mut_ptr = child_ptr as *mut CellData;
-                        if (*child_mut_ptr).dirty_parents == 0 {
-                            stack.push(child_mut_ptr);
-                        }
-                        (*child_mut_ptr).dirty_parents += 1;
+            while let Some(current_ptr) = stack.pop() {
+                let current = &*current_ptr;
+                let deps = &current.dependents; // Access the dependents vector
+    
+                for &(row, col) in deps.iter() {
+                    let child_data = self.get_cell_value(row as usize, col as usize);
+                    let child_ptr = child_data as *mut CellData;
+    
+                    if (*child_ptr).dirty_parents == 0 {
+                        stack.push(child_ptr);
                     }
-                
+                    (*child_ptr).dirty_parents += 1;
+                }
             }
         }
     }
-    
     
 
     /// Recursively update dependent cells using topological sort
@@ -288,33 +263,35 @@ impl Backend {
     
         let mut process_stack = Vec::new();
     
-        unsafe {  let cell_data = self.get_cell_value(cell.row,cell.col) ;{
-           
-                for &child_ptr in &*cell_data.dependents.get() {
-                    let child_mut_ptr = child_ptr as *mut CellData;
-                    (*child_mut_ptr).dirty_parents -= 1;
-                    if (*child_mut_ptr).dirty_parents == 0 {
-                        process_stack.push(child_mut_ptr);
-                    }
+        unsafe {
+            let cell_data = self.get_cell_value(cell.row, cell.col);
+    
+            // Process the dependents of the initial cell
+            for &(row, col) in cell_data.dependents.iter() {
+                let child_data = self.get_cell_value(row as usize, col as usize);
+                child_data.dirty_parents -= 1;
+                if child_data.dirty_parents == 0 {
+                    process_stack.push((row as usize, col as usize));
                 }
+            }
     
-                while let Some(current_ptr) = process_stack.pop() {
-                    let (new_value, error) = self.evaluate_expression(&(*current_ptr).function);
-                    (*current_ptr).value = new_value;
-                    (*current_ptr).error = error;
+            // Process the stack of dependent cells
+            while let Some((row, col)) = process_stack.pop() {
+                let current_data = self.get_cell_value(row, col);
+                let (new_value, error) = self.evaluate_expression(&current_data.function);
+                current_data.value = new_value;
+                current_data.error = error;
     
-                    for &dependent_ptr in &*(*current_ptr).dependents.get() {
-                        let dependent_mut_ptr = dependent_ptr as *mut CellData;
-                        (*dependent_mut_ptr).dirty_parents -= 1;
-                        if (*dependent_mut_ptr).dirty_parents == 0 {
-                            process_stack.push(dependent_mut_ptr);
-                        }
+                for &(dep_row, dep_col) in current_data.dependents.iter() {
+                    let dependent_data = self.get_cell_value(dep_row as usize, dep_col as usize);
+                    dependent_data.dirty_parents -= 1;
+                    if dependent_data.dirty_parents == 0 {
+                        process_stack.push((dep_row as usize, dep_col as usize));
                     }
                 }
             }
         }
     }
-    
 
     /// Checks if this function can be safely replaced with a constant value
     pub fn is_expression_constant(&self, func: &Function) -> bool {
@@ -390,11 +367,9 @@ impl Backend {
     pub fn set_cell_value(&mut self, cell: Cell, expression: &str) -> Result<(), ExpressionError> {
         // Parse the expression
         let (new_function, success) = self.parse_expression(expression);
-        // println!("expression: {:?}", expression);
         if !success {
             return Err(ExpressionError::CouldNotParse);
         }
-        // println!("row: {:?}, col: {:?}", cell.row, cell.col);
     
         // Get a mutable reference to the target cell
         unsafe { let cell_data = self
@@ -411,7 +386,6 @@ impl Backend {
             if new_function.type_ == FunctionType::Constant {
                 let (new_value, error) = self.evaluate_expression(&new_function);
                 (*cell_ptr).value = new_value;
-                // println!("new_value: {:?}", new_value);
                 (*cell_ptr).error = error;
                 (*cell_ptr).function = new_function;
     
@@ -944,7 +918,7 @@ impl Backend {
         Ok(())
     }
 
-    #[cfg(feature = "ssr")]
+    #[cfg(feature = "gui")]
     // #[server]
     pub fn save_to_csv_internal(&self) -> Result<(), Box<dyn Error>> {
         let filename = self.filename.clone();
@@ -961,7 +935,7 @@ impl Backend {
         Ok(())
     }
 
-    #[cfg(feature = "ssr")]
+    #[cfg(feature = "gui")]
     // #[server]
     pub fn save_as_internal(&mut self, filename: &str) -> Result<(), Box<dyn Error>> {
         self.filename = filename.to_string();
@@ -969,15 +943,7 @@ impl Backend {
     }
 }
 
-#[cfg(feature = "ssr")]
-use std::cell::RefCell;
-#[cfg(feature = "ssr")]
-use once_cell::unsync::OnceCell;
 
-#[cfg(feature = "ssr")]
-thread_local! {
-    pub static BACKEND: OnceCell<RefCell<Backend>> = OnceCell::new();
-}
 
     // #[cfg(feature = "gui")]
     // // Save to CSV file

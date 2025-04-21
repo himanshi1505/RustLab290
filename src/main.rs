@@ -1,16 +1,18 @@
+#[cfg(feature = "gui")]
+mod app;
 mod backend;
 mod frontend;
 mod structs;
 mod parser;
 
-#[cfg(feature = "ssr")]
-mod gui;
+#[cfg(feature = "gui")]
+mod main_gui;
 #[cfg(feature = "cli")]
 mod cli;
 
-#[cfg(feature = "ssr")]
+#[cfg(feature = "gui")]
 fn main() {
-    gui::main();
+    main_gui::main();
 }
 
 #[cfg(feature = "cli")]
