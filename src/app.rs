@@ -81,79 +81,128 @@ pub fn grid(props: &GridProps) -> Html {
     let selected_cell = props.selected_cell.clone();
     let backend = frontend.get_backend_mut();
     
-    // Fixed dimensions for cells
-    const CELL_WIDTH: &str = "80px";
-    const CELL_HEIGHT: &str = "24px";
-    // Calculate total table size
-    let table_style = format!("
-        width: calc({} * {});
-        height: calc({} * {});
-    ", 
-        CELL_WIDTH, props.cols,
-        CELL_HEIGHT, props.rows
-    );
+   
+
     
-    html! {
+     // Fixed dimensions - set width to accommodate "WWW" comfortably
+     const CELL_WIDTH: &str = "80px";  // Wide enough for "WWW"
+     const CELL_HEIGHT: &str = "24px";
+     const HEADER_COLOR: &str = "#f0f0f0";
+ 
+     // Function to convert column index to letter (0 -> A, 1 -> B, etc.)
+     fn col_to_letter(col: usize) -> String {
+         let mut result = String::new();
+         let mut n = col;
+         while n >= 0 {
+             result.insert(0, (b'A' + (n % 26) as u8) as char);
+             if n < 26 { break; }
+             n = n / 26 - 1;
+         }
+         result
+     }
+ 
+     html! {
         <div style="overflow: auto; height: 100%; width: 100%;">
-            <table 
-                style={table_style}
-                class="spreadsheet-grid"
-            >
-                <tbody>
-                    { for (0..props.rows).map(|row| html! {
-                        <tr key={row.to_string()} style="height: {CELL_HEIGHT};">
-                            { for (0..props.cols).map(|col| {
-                                let key = format!("{}-{}", row, col);
-                                let mut val="0".to_string();
-                                unsafe {
-                                    let celldata =  backend.get_cell_value(row, col);
-                                    if(celldata.error == CellError::NoError){
-                                        val=celldata.value.to_string();
-                                    } 
-                                    else{
-                                        val="ERR".to_string();
-                                    } 
-                                }
-                                let is_selected = *selected_cell == (row, col);
-                                
-                                let cell_style = format!("
-                                    width: {CELL_WIDTH};
-                                    height: {CELL_HEIGHT};
-                                    border: 1px solid #ddd;
-                                    padding: 2px;
-                                    text-align: left;
-                                    vertical-align: middle;
-                                    overflow: hidden;
-                                    text-overflow: ellipsis;
-                                    white-space: nowrap;
-                                    background-color: {};
-                                ", if is_selected { "#e6f3ff" } else { "white" });
-
-                                let onclick = {
-                                    let selected_cell = selected_cell.clone();
-                                    Callback::from(move |_| {
-                                        selected_cell.set((row, col));
-                                    })
-                                };
-
-                                html! {
-                                    <td 
-                                        key={key}
-                                        style={cell_style}
-                                        {onclick}
-                                        class="spreadsheet-cell"
-                                    >
-                                        {val}
-                                    </td>
-                                }
-                            })}
-                        </tr>
-                    })}
-                </tbody>
-            </table>
-        </div>
-    }
-}
+        <table style={format!(
+            "border-collapse: collapse;
+            table-layout: fixed;
+            width: calc(30px + {} * {});",
+            props.cols, CELL_WIDTH
+        )}> <thead>
+                     <tr style="height: {CELL_HEIGHT};">
+                         <th style="
+                             width: 30px;
+                             background: {HEADER_COLOR};
+                             border: 1px solid #ddd;
+                             position: sticky;
+                             top: 0;
+                             z-index: 2;
+                         "></th>
+                         {(0..props.cols).map(|col| {
+                             let letter = col_to_letter(col);
+                             html! {
+                                 <th 
+                                     key={format!("col-{}", col)}
+                                     style="
+                                         width: {CELL_WIDTH};
+                                         background: {HEADER_COLOR};
+                                         border: 1px solid #ddd;
+                                         text-align: center;
+                                         font-weight: bold;
+                                         position: sticky;
+                                         top: 0;
+                                         z-index: 1;
+                                         overflow: hidden;
+                                         text-overflow: ellipsis;
+                                     "
+                                 >
+                                     {letter}
+                                 </th>
+                             }
+                         }).collect::<Html>()}
+                     </tr>
+                 </thead>
+                 <tbody>
+                     {(0..props.rows).map(|row| {
+                         html! {
+                             <tr key={row.to_string()} style="height: {CELL_HEIGHT};">
+                                 <td style="
+                                     width: 30px;
+                                     background: {HEADER_COLOR};
+                                     border: 1px solid #ddd;
+                                     text-align: center;
+                                     font-weight: bold;
+                                     position: sticky;
+                                     left: 0;
+                                     z-index: 1;
+                                 ">
+                                     {row + 1}
+                                 </td>
+                                 {(0..props.cols).map(|col| {
+                                     let key = format!("{}-{}", row, col);
+                                     let val = unsafe { 
+                                         backend.get_cell_value(row, col).value.to_string()
+                                     };
+                                     let is_selected = *selected_cell == (row, col);
+                                     
+                                     let cell_style = format!("
+                                         width: {CELL_WIDTH};
+                                         height: {CELL_HEIGHT};
+                                         border: 1px solid #ddd;
+                                         padding: 2px;
+                                         background-color: {};
+                                         text-align: left;
+                                         vertical-align: middle;
+                                         overflow: hidden;
+                                         text-overflow: ellipsis;
+                                         white-space: nowrap;
+                                     ", if is_selected { "#e6f3ff" } else { "white" });
+ 
+                                     let onclick = {
+                                         let selected_cell = selected_cell.clone();
+                                         Callback::from(move |_| {
+                                             selected_cell.set((row, col));
+                                         })
+                                     };
+ 
+                                     html! {
+                                         <td 
+                                             key={key}
+                                             style={cell_style}
+                                             {onclick}
+                                         >
+                                             {val}
+                                         </td>
+                                     }
+                                 }).collect::<Html>()}
+                             </tr>
+                         }
+                     }).collect::<Html>()}
+                 </tbody>
+             </table>
+         </div>
+     }
+ }
 // #[function_component(FormulaBar)]
 // pub fn formula_bar() -> Html {
 //     let formula = use_state(|| String::new());
