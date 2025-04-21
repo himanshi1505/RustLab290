@@ -2,8 +2,6 @@ mod backend;
 mod frontend;
 mod structs;
 mod parser;
-mod components;
-mod server_logic;
 
 #[cfg(feature = "ssr")]
 mod gui;
