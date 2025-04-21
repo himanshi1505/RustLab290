@@ -671,6 +671,7 @@ impl Backend {
     }
 
     pub fn autofill(&mut self, expression: &str) -> Result<(), Box<dyn std::error::Error>> {
+        println!("autofill: {:?}", expression);
         let tup = self.parse_autofill(expression);
         let (tl_cell, br_cell, dest_cell) = match tup {
             Ok((tl, br, dest)) => (tl, br, dest),
@@ -680,12 +681,15 @@ impl Backend {
         let br = (br_cell.row, br_cell.col);
         let dest = (dest_cell.row, dest_cell.col);
         let v = unsafe { self.get_cell_value(tl.0, tl.1).value };
-        let d = unsafe { self.get_cell_value(tl.0, tl.1).value - self.get_cell_value(tl.0 + 1, tl.1 + 1).value };
-        let r  = unsafe { self.get_cell_value(tl.0, tl.1).value as f64 / self.get_cell_value(tl.0 + 1, tl.1 + 1).value as f64 };
+        let d = unsafe { self.get_cell_value(tl.0, tl.1).value - self.get_cell_value(tl.0 + 1, tl.1).value };
+        let r  = unsafe { (self.get_cell_value(tl.0, tl.1).value as f64) / (self.get_cell_value(tl.0 + 1, tl.1).value as f64) };
+        println!("v: {:?}, d: {:?}, r: {:?}", v, d, r);
+        println!("tl_value: {:?}, br_value: {:?}", unsafe { self.get_cell_value(tl.0, tl.1).value }, unsafe { self.get_cell_value(tl.0 + 1, tl.1).value });
         let mut is_constant = true;
         let mut is_ap = true;
         let mut is_gp = true;
         let grid_ref = unsafe {&*self.grid.get()};
+        println!("im hereee");
         for row in tl.0..=br.0 {
             for col in tl.1..=br.1 {
                 if grid_ref[row][col].value != v {
@@ -694,7 +698,9 @@ impl Backend {
                 }
             }
         }
+        println!("is constant: {:?}", is_constant);
         if is_constant {
+            println!("is constant");
             for row in br.0+1..=dest.0 {
                 for col in br.1..=dest.1 {
                     let cell = Cell { row, col };
@@ -706,19 +712,21 @@ impl Backend {
             }
             return Ok(());
         } else {
-            for row in tl.0..=br.0-1 {
-                for col in tl.1..=br.1-1 {
-                    if grid_ref[row][col].value as f64 / grid_ref[row + 1][col + 1].value as f64 != r {
+            for row in tl.0..br.0 {
+                for col in tl.1..=br.1 {
+                    if (grid_ref[row][col].value as f64) / (grid_ref[row + 1][col].value as f64) != r {
                         is_gp = false;
                         break;
                     }
                 }
             }
+            print!("is gp: {:?}", is_gp);
             if is_gp {
+                println!("is gp");
                 for row in br.0+1..=dest.0 {
                     for col in br.1..=dest.1 {
                         let cell = Cell { row, col };
-                        let res = self.set_cell_value(cell, &((grid_ref[row - 1][col - 1].value as f64 / r) as i32).to_string());
+                        let res = self.set_cell_value(cell, &((grid_ref[row - 1][col].value as f64 / r) as i32).to_string());
                         if let Err(err) = res {
                             println!("Error autofilling value: {:?}", err);
                         }
@@ -727,19 +735,21 @@ impl Backend {
                 return Ok(());
             }
             else {
-                for row in tl.0..=br.0-1 {
-                    for col in tl.1..=br.1-1 {
-                        if grid_ref[row][col].value - grid_ref[row + 1][col + 1].value != d {
+                for row in tl.0..br.0 {
+                    for col in tl.1..=br.1 {
+                        if grid_ref[row][col].value - grid_ref[row + 1][col].value != d {
                             is_ap = false;
                             break;
                         }
                     }
                 }
+                println!("is ap: {:?}", is_ap);
                 if is_ap {
+                    print!("is ap");
                     for row in br.0+1..=dest.0 {
                         for col in br.1..=dest.1 {
                             let cell = Cell { row, col };
-                            let res = self.set_cell_value(cell, &(grid_ref[row - 1][col - 1].value + d).to_string());
+                            let res = self.set_cell_value(cell, &(grid_ref[row - 1][col].value - d).to_string());
                             if let Err(err) = res {
                                 println!("Error autofilling value: {:?}", err);
                             }

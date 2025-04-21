@@ -207,7 +207,7 @@ impl Frontend {
                 }
             }
             cmd if cmd.starts_with("autofill") => {
-                let res = backend::Backend::paste(&mut self.backend, cmd);
+                let res = backend::Backend::autofill(&mut self.backend, cmd);
                 match res {
                     Ok(_) => {return true;}
                     Err(_) => {return false;}
