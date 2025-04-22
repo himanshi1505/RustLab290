@@ -236,7 +236,8 @@ impl Frontend {
             .unwrap_or(false)
         {
             if let Some(eq_pos) = input.find('=') {
-                let formula = input;
+                
+                let formula = input[eq_pos..].trim();
                 let (cell_str, expr_str) = input.split_at(eq_pos);
                 let (rows, cols) = self.backend.get_rows_col();
                 self.backend.push_undo_state();
@@ -250,6 +251,7 @@ impl Frontend {
                     match self.backend.set_cell_value(cell, expr) {
                         Ok(_) => {
                             #[cfg(feature = "ssr")]
+                            
                             {
                                 self.backend.formula_strings[rows][cols] = expr_str.to_string();
                             }
