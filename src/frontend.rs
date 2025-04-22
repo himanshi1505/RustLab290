@@ -160,6 +160,12 @@ impl Frontend {
                     self.top_left.col = self.cols - MAX_WIDTH;
                 }
             }
+            "undo" => {
+                self.backend.undo_callback();
+            }
+            "redo" => {
+                self.backend.redo_callback();
+            }
             cmd if cmd.starts_with("scroll_to ") => {
                 let cell_str = cmd.trim_start_matches("scroll_to ").trim();
                 let (rows, cols) = self.backend.get_rows_col();
@@ -185,6 +191,7 @@ impl Frontend {
                 }
             }
             cmd if cmd.starts_with("copy(") => {
+                self.backend.push_undo_state();
                 println!("copy");
                 let res = backend::Backend::copy(&mut self.backend, cmd);
                 match res {
@@ -193,6 +200,7 @@ impl Frontend {
                 }
             }
             cmd if cmd.starts_with("cut(") => {
+                self.backend.push_undo_state();
                 let res = backend::Backend::cut(&mut self.backend, cmd);
                 match res {
                     Ok(_) => {return true;}
@@ -200,6 +208,7 @@ impl Frontend {
                 }
             }
             cmd if cmd.starts_with("paste(") => {
+                self.backend.push_undo_state();
                 let res = backend::Backend::paste(&mut self.backend, cmd);
                 match res {
                     Ok(_) => {return true;}
@@ -207,6 +216,7 @@ impl Frontend {
                 }
             }
             cmd if cmd.starts_with("autofill") => {
+                self.backend.push_undo_state();
                 let res = backend::Backend::autofill(&mut self.backend, cmd);
                 match res {
                     Ok(_) => {return true;}
@@ -229,6 +239,7 @@ impl Frontend {
                 let formula = input;
                 let (cell_str, expr_str) = input.split_at(eq_pos);
                 let (rows, cols) = self.backend.get_rows_col();
+                self.backend.push_undo_state();
                 if let Some(cell) = parse_cell_reference(cell_str, rows, cols) {
                     let row_num = cell.row;
                     let col_num = cell.col;

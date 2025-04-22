@@ -16,11 +16,22 @@ use csv::{ReaderBuilder, WriterBuilder, Writer};
 // #[cfg(feature = "gui")]
 use std::error::Error;
 
+fn number_to_column_header(number: usize) -> String {
+    let mut num = number + 1;
+    let mut result = String::new();
+    while num > 0 {
+        let rem = (num - 1) % 26;
+        result.insert(0, (b'A' + rem as u8) as char);
+        num = (num - 1) / 26;
+    }
+    result
+}
+
 #[derive(Debug)]
 pub struct Backend {
     grid: UnsafeCell<Vec<Vec<CellData>>>,
-    undo_stack: VecDeque<Vec<Vec<i32>>>,
-    redo_stack: VecDeque<Vec<Vec<i32>>>,
+    undo_stack: VecDeque<Vec<Vec<(i32, CellError, Vec<(i32, i32)>)>>>,
+    redo_stack: VecDeque<Vec<Vec<(i32, CellError, Vec<(i32, i32)>)>>>,
     rows: usize,
     cols: usize,
 
@@ -30,6 +41,9 @@ pub struct Backend {
     pub filename: String,
     // #[cfg(feature = "gui")]
     pub copy_stack: Vec<Vec<i32>>,
+
+    // pub undo_stack: VecDeque<Vec<Vec<i32>>>,
+    // pub redo_stack: VecDeque<Vec<Vec<i32>>>,
 }
 
 impl Backend {
@@ -670,6 +684,77 @@ impl Backend {
         self.cols
     }
 
+    pub fn undo_callback(&mut self) {
+        if let Some(prev_state) = self.undo_stack.pop_back() {
+            self.redo_stack.push_back(self.create_snapshot());
+            self.apply_snapshot(prev_state);
+        }
+    }
+
+    //#[cfg(feature = "gui")]
+    // Redo last undone action
+    pub fn redo_callback(&mut self) {
+        if let Some(next_state) = self.redo_stack.pop_back() {
+            self.undo_stack.push_back(self.create_snapshot());
+            self.apply_snapshot(next_state);
+        }
+    }
+
+    //#[cfg(feature = "gui")]
+    // Helper: Create snapshot of current state
+    pub fn create_snapshot(&self) -> Vec<Vec<(i32, CellError, Vec<(i32, i32)>)>> {
+        let mut snapshot = Vec::with_capacity(self.rows);
+        for row in 0..self.rows {
+            let mut row_data = Vec::with_capacity(self.cols);
+            for col in 0..self.cols {
+                unsafe{
+                let cell_data = self.get_cell_value(row, col) ;
+                row_data.push(
+                    
+                    (cell_data.value, cell_data.error, cell_data.dependents.clone())
+                    
+                );
+            }
+            }
+            snapshot.push(row_data);
+        }
+        snapshot
+    }
+
+    //#[cfg(feature = "gui")]
+    // Helper: Apply state snapshot
+    pub fn apply_snapshot(&mut self, snapshot: Vec<Vec<(i32, CellError, Vec<(i32, i32)>)>>) {
+        for (row_idx, row) in snapshot.iter().enumerate() {
+            for (col_idx, value) in row.iter().enumerate() {
+                
+                unsafe{
+                    let cell_data = self.get_cell_value(row_idx, col_idx) ;
+                    cell_data.value = value.0;
+                    cell_data.error = value.1;
+                    cell_data.dependents = value.2.clone();
+                
+                
+                }
+        }
+    }
+}
+
+    //#[cfg(feature = "gui")]
+    // Helper: Clear undo/redo stacks
+    pub fn clear_undo_redo(&mut self) {
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+    }
+
+    //#[cfg(feature = "gui")]
+    // Helper: Save current state to undo stack
+    pub fn push_undo_state(&mut self) {
+        if self.undo_stack.len() >= 100 {
+            self.undo_stack.pop_front();
+        }
+        self.undo_stack.push_back(self.create_snapshot());
+    }
+
     pub fn autofill(&mut self, expression: &str) -> Result<(), Box<dyn std::error::Error>> {
         println!("autofill: {:?}", expression);
         let tup = self.parse_autofill(expression);
@@ -777,8 +862,11 @@ impl Backend {
         for row in tl.0..=br.0 {
             for col in tl.1..=br.1 {
                 // println!("im htregrseznrte");
-                let cell = Cell { row, col };
+                let cell = Cell { row, col };   
                 let res = self.set_cell_value(cell, "0");
+                // unsafe {(*self.grid.get().wrapping_add(row).wrapping_add(col)).value = 0;}
+                // unsafe {let cell = self.get_cell_value(row, col);
+                // cell.value = 0;}
                 if let Err(err) = res {
                     println!("Error cutting value: {:?}", err);
                 }
@@ -827,9 +915,14 @@ impl Backend {
                     let cell = Cell { row, col };
                     // println!("row: {:?}, col: {:?}", row, col);
                     let res = self.set_cell_value(cell, &self.copy_stack[row - tl.0][col - tl.1].to_string());
-                    if let Err(err) = res {
-                        println!("Error pasting value: {:?}", err);
-                    }
+                    let col_header = 
+                    self.formula_strings[row][col] = self.copy_stack[row - tl.0][col - tl.1].to_string();
+                    // unsafe {(*self.grid.get().wrapping_add(row).wrapping_add(col)).value = self.copy_stack[row - tl.0][col - tl.1];}
+                    // unsafe {let cell = self.get_cell_value(row, col);
+                    // cell.value = self.copy_stack[row - tl.0][col - tl.1];}
+                    // if let Err(err) = res {
+                    //     println!("Error pasting value: {:?}", err);
+                    // }
                 }
             }
         }
