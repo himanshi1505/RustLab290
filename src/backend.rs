@@ -133,8 +133,10 @@ impl Backend {
             // First pass: check for cycles and collect new deps to process
             let mut deps_to_check = Vec::new();
             for &dep_ptr in deps.iter() {
-               
-                if(dep_ptr.0==start.row as i32 && dep_ptr.1==start.col as i32){ {
+               println!("dep_ptr: {:?}", dep_ptr);
+               println!("start.row,start.col: {}{}", start.row, start.col);
+
+                if dep_ptr.0==start.row as i32 && dep_ptr.1==start.col as i32{ 
                     found_cycle = true;
                     break;
                 }
@@ -157,7 +159,7 @@ impl Backend {
                 
             }
         }
-    }
+    
         self.reset_found(start);
         found_cycle
     }
