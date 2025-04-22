@@ -4,7 +4,21 @@ use std::collections::VecDeque;
 use std::cell::UnsafeCell;
 use std::rc::Rc;
 use std::cell::RefCell;
+use web_sys::FileReader;
 
+
+use wasm_bindgen::JsValue;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
+use gloo::file::callbacks::read_as_text;
+
+
+use gloo::file::File;
+use gloo::utils::window;
+
+
+
+use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, HtmlInputElement, Event, ProgressEvent, Url};
 use crate::backend::Backend;
 use crate::frontend::Frontend;
 use crate::structs::{Cell, Operand, OperandType, OperandData, CellData, Function, CellError};
@@ -31,6 +45,13 @@ pub struct CommandBarProps {
 }
 
 
+#[derive(Properties, PartialEq)]
+pub struct TabBarProps {
+    pub frontend: UseStateHandle<Rc<RefCell<Frontend>>>,
+    pub update_trigger: UseStateHandle<i32>,
+    pub rows: usize,
+    pub cols: usize,
+}
 
 #[function_component(App)]
 pub fn app() -> Html {
@@ -47,7 +68,12 @@ pub fn app() -> Html {
             height: 100vh;
             overflow: hidden;
         ">
-            <TabBar />
+            <TabBar 
+                frontend={frontend.clone()} 
+                update_trigger={update_trigger.clone()}
+                rows={rows}
+                cols={cols}
+            />
             <FormulaBar 
                 frontend={frontend.clone()}
                 selected_cell={selected_cell.clone()}
@@ -341,41 +367,210 @@ pub fn command_bar(props: &CommandBarProps) -> Html {
 
 
 // #[function_component(TabBar)]
-// pub fn tab_bar(props: &BackendProps) -> Html {
-//     let undo_onclick = {
-//         let backend = props.backend.clone();
+// pub fn tab_bar(props: &TabBarProps) -> Html {
+//     let frontend = props.frontend.clone();
+//     let update_trigger = props.update_trigger.clone();
+//     let status_message = use_state(|| String::new()); // New state for status messages
+
+//     let save_onclick = {
+//         let frontend = frontend.clone();
+//         let update_trigger = update_trigger.clone();
+//         let status_message = status_message.clone();
 //         Callback::from(move |_| {
-//             let mut new_backend = (*backend).clone();
-//             if new_backend.undo_callback().is_ok() {
-//                 backend.set(new_backend);
+//             let mut frontend = frontend.borrow_mut();
+//             let backend = frontend.get_backend_mut();
+//             match backend.save_to_csv("save.csv") {
+//                 Ok(_) => {
+//                     status_message.set("File saved successfully".to_string());
+//                     update_trigger.set(*update_trigger + 1);
+//                 }
+//                 Err(e) => {
+//                     status_message.set(format!("Save failed: {}", e));
+//                 }
 //             }
 //         })
 //     };
 
-//     let redo_onclick = {
-//         let backend = props.backend.clone();
+//     let load_onclick = {
+//         let frontend = frontend.clone();
+//         let update_trigger = update_trigger.clone();
+//         let status_message = status_message.clone();
 //         Callback::from(move |_| {
-//             let mut new_backend = (*backend).clone();
-//             if new_backend.redo().is_ok() {
-//                 backend.set(new_backend);
+//             let mut frontend = frontend.borrow_mut();
+//             let backend = frontend.get_backend_mut();
+//             match backend.load_csv("save.csv", false) {
+//                 Ok(_) => {
+//                     status_message.set("File loaded successfully".to_string());
+//                     update_trigger.set(*update_trigger + 1);
+//                 }
+//                 Err(e) => {
+//                     status_message.set(format!("Load failed: {}", e));
+//                 }
+//                  // Clear the message after displaying
+            
 //             }
+//             status_message.set("".to_string());
 //         })
 //     };
 
 //     html! {
-//         <div style="background-color: #eee; padding: 10px;">
-//             <button onclick={undo_onclick}>{ "Undo" }</button>
-//             <button onclick={redo_onclick}>{ "Redo" }</button>
+//         <div style="background-color: #eee; padding: 10px; display: flex; align-items: center; gap: 10px;">
+//             <button onclick={save_onclick}>{ "Save" }</button>
+//             <button onclick={load_onclick}>{ "Load" }</button>
+//             <div style={format!("margin-left: 10px; color: {};", if status_message.contains("failed") { "#ff0000" } else { "#00ff00" })}>
+//                 { &*status_message }
+               
+//             </div>
 //         </div>
 //     }
 // }
+
+pub fn download_csv(content: String, filename: &str) {
+    let array = js_sys::Array::new();
+    array.push(&JsValue::from_str(&content));
+
+    let blob = Blob::new_with_str_sequence_and_options(
+        &array,
+        BlobPropertyBag::new().type_("text/csv"),
+    ).unwrap();
+
+    let url = Url::create_object_url_with_blob(&blob).unwrap();
+
+    let document = window().document().unwrap();
+    let a = document.create_element("a").unwrap().dyn_into::<web_sys::HtmlAnchorElement>().unwrap();
+    a.set_href(&url);
+    a.set_download(filename);
+    a.click();
+    Url::revoke_object_url(&url).unwrap();
+}
 #[function_component(TabBar)]
-pub fn tab_bar() -> Html {
+pub fn tab_bar(props: &TabBarProps) -> Html {
+    let frontend = props.frontend.clone();
+    let update_trigger = props.update_trigger.clone();
+    let status_message = use_state(|| String::new());
+    let file_input_ref = use_node_ref();
+    let rows = props.rows;
+    let cols = props.cols;
+
+    // Save functionality
+    let save_onclick = {
+        let frontend = frontend.clone();
+        let status_message = status_message.clone();
+        
+        Callback::from(move |_| {
+            let mut frontend = frontend.borrow_mut();
+            let backend = frontend.get_backend_mut();
+            
+            // Generate CSV content
+            let mut csv = String::new();
+            for row in 0..rows {
+                let mut line = Vec::new();
+                for col in 0..cols {
+                    unsafe {
+                        let celldata = backend.get_cell_value(row, col);
+                        let val = if celldata.error == CellError::NoError {
+                            celldata.value.to_string()
+                        } else {
+                            "Error".to_string()
+                        };
+                        line.push(val);
+                    }
+                }
+                csv.push_str(&line.join(","));
+                csv.push('\n');
+            }
+            
+            // Trigger download
+            download_csv(csv, "spreadsheet.csv");
+            status_message.set("File saved successfully".to_string());
+            
+            // Clear message after 3 seconds
+            let status_message = status_message.clone();
+            gloo::timers::callback::Timeout::new(3000, move || {
+                status_message.set(String::new());
+            }).forget();
+        })
+    };
+    
+    // Load functionality
+    let load_onclick = {
+        let file_input_ref = file_input_ref.clone();
+        Callback::from(move |_| {
+            if let Some(input) = file_input_ref.cast::<HtmlInputElement>() {
+                input.click();
+            }
+        })
+    };
+    
+    let on_file_change = {
+        let frontend = frontend.clone();
+        let update_trigger = update_trigger.clone();
+        let status_message = status_message.clone();
+    
+        Callback::from(move |e: Event| {
+            let input: HtmlInputElement = e.target_unchecked_into();
+            if let Some(file_list) = input.files() {
+                if file_list.length() > 0 {
+                    let file = file_list.get(0).unwrap();
+                    let reader = FileReader::new().unwrap();
+    
+                    let frontend = frontend.clone();
+                    let update_trigger = update_trigger.clone();
+                    let status_message = status_message.clone();
+    
+                    // Clone the `reader` to avoid moving it
+                    let reader_clone = reader.clone();
+                    let onload = Closure::wrap(Box::new(move |_e: ProgressEvent| {
+                        if let Ok(result) = reader_clone.result() {
+                            if let Some(text) = result.as_string() {
+                                let mut frontend = frontend.borrow_mut();
+                                let backend = frontend.get_backend_mut();
+    
+                                match backend.load_csv_from_str(&text) {
+                                    Ok(_) => {
+                                        status_message.set("File loaded successfully".to_string());
+                                        update_trigger.set(*update_trigger + 1);
+                                    }
+                                    Err(e) => {
+                                        status_message.set(format!("Load failed: {}", e));
+                                    }
+                                }
+    
+                                // Clear message after 3 seconds
+                                let status_message = status_message.clone();
+                                gloo::timers::callback::Timeout::new(3000, move || {
+                                    status_message.set(String::new());
+                                })
+                                .forget();
+                            }
+                        }
+                    }) as Box<dyn FnMut(_)>);
+    
+                    reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                    reader.read_as_text(&file).unwrap();
+                    onload.forget();
+                }
+            }
+        })
+    };
+
     html! {
-        <div style="background-color: #eee; padding: 10px;">
-            <button>{"Undo"}</button>
-            <button>{"Redo"}</button>
-            <button>{"Save"}</button>
+        <div style="background-color: #eee; padding: 10px; display: flex; align-items: center; gap: 10px;">
+            <button onclick={save_onclick}>{ "Save" }</button>
+            <button onclick={load_onclick}>{ "Load" }</button>
+            <input
+                type="file"
+                accept=".csv"
+                ref={file_input_ref}
+                onchange={on_file_change}
+                style="display: none;"
+            />
+            <div style={format!(
+                "margin-left: 10px; color: {}; transition: opacity 0.5s;",
+                if status_message.contains("failed") { "#ff0000" } else { "#00aa00" }
+            )}>
+                { if !status_message.is_empty() { &*status_message } else { "" } }
+            </div>
         </div>
     }
 }

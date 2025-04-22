@@ -917,7 +917,80 @@ impl Backend {
 
         Ok(())
     }
-
+    pub fn load_csv_string(&mut self, csv_data: &str, is_header_present: bool) -> Result<(), Box<dyn std::error::Error>> {
+        let mut reader = ReaderBuilder::new()
+            .has_headers(is_header_present)
+            .from_reader(csv_data.as_bytes());
+    
+        let mut rows: Vec<Vec<String>> = Vec::new();
+        for result in reader.records() {
+            let record = result?;
+            rows.push(record.iter().map(|s| s.trim().to_string()).collect());
+        }
+    
+        let num_rows = rows.len();
+        let num_cols = rows.get(0).map_or(0, |r| r.len());
+        *self = Backend::new(num_rows, num_cols);
+        self.get_rows_col().0 = num_rows;
+        self.get_rows_col().1 = num_cols;
+    
+        for (row_idx, row) in rows.iter().enumerate() {
+            for (col_idx, val) in row.iter().enumerate() {
+                let cell = Cell { row: row_idx, col: col_idx };
+                self.set_cell_value(cell, val);
+            }
+        }
+    
+        Ok(())
+    }
+    pub fn to_csv_string(&self) -> Result<String, Box<dyn std::error::Error>> {
+        let mut writer = WriterBuilder::new().from_writer(Vec::new());
+        
+        for row in 0..self.rows {
+            let mut record = Vec::new();
+            for col in 0..self.cols {
+                unsafe {
+                    record.push(self.get_cell_value(row, col).value.to_string());
+                }
+            }
+            writer.write_record(&record)?;
+        }
+        
+        Ok(String::from_utf8(writer.into_inner()?)?)
+    }
+    pub fn load_csv_from_str(&mut self, data: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut rdr = ReaderBuilder::new()
+            .has_headers(false)
+            .from_reader(data.as_bytes());
+        
+        let mut csv_data: Vec<Vec<String>> = Vec::new();
+    
+        for record in rdr.records() {
+            let record = record?;
+            let row: Vec<String> = record.iter()
+                .map(|field| field.trim().to_string())
+                .collect();
+            csv_data.push(row);
+        }
+    
+        let no_of_rows = csv_data.len();
+        let no_of_cols = csv_data.first().map_or(0, |row| row.len());
+        
+        // Resize the backend to match CSV dimensions
+        *self = Backend::new(no_of_rows, no_of_cols);
+        
+        // Load data into cells
+        for (row_idx, row) in csv_data.iter().enumerate() {
+            for (col_idx, field) in row.iter().enumerate() {
+                if row_idx < self.rows && col_idx < self.cols {
+                    let cell = Cell { row: row_idx, col: col_idx };
+                    self.set_cell_value(cell, field);
+                }
+            }
+        }
+        
+        Ok(())
+    }
     #[cfg(feature = "gui")]
     // #[server]
     pub fn save_to_csv_internal(&self) -> Result<(), Box<dyn Error>> {
