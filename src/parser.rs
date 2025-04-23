@@ -33,6 +33,51 @@ pub fn parse_load_or_save_cmd(
     Some(file_name.to_string())
 }
 
+pub fn parse_sort(backend: &Backend, expression: &str) -> Result<(Cell, Cell, bool), Box<dyn std::error::Error>> {
+    // println!("Parsing sort command: {}", expression);
+    let start_pos = 6; // "SORTA( or SORTD("
+    let mut a_or_d = true; // true for ascending, false for descending
+    let posi: &str = &expression[4 as usize..4 as usize];
+    if posi == "A" {
+        a_or_d = true;
+    } else if posi == "D" {
+        a_or_d = false;
+    } else {
+        return Err("Invalid command".to_string().into());
+    }
+    let content = &expression[start_pos..];
+    let end_pos = match content.find(')') {
+        Some(pos) => pos,
+        None => return Err("Invalid command".to_string().into()),
+    };
+    let range_str = &content[..end_pos];
+
+    if let Some(separator_pos) = range_str.find(':') {
+        let top_left_str = &range_str[..separator_pos];
+        let bottom_right_str = &range_str[separator_pos + 1..];
+
+        let top_left =
+            match parse_cell_reference(top_left_str, backend.get_rows(), backend.get_cols()) {
+                Some(cell) => cell,
+                None => return Err("Invalid cell reference".to_string().into()),
+            };
+        let bottom_right =
+            match parse_cell_reference(bottom_right_str, backend.get_rows(), backend.get_cols()) {
+                Some(cell) => cell,
+                None => return Err("Invalid cell reference".to_string().into()),
+            };
+
+        // Check if range is valid (top_left <= bottom_right)
+        if top_left.row > bottom_right.row || top_left.col != bottom_right.col {
+            return Err("Invalid range".to_string().into());
+        }
+
+        return Ok((top_left, bottom_right, a_or_d));
+    }
+
+    Err("Invalid command".to_string().into())
+}
+
 pub fn parse_cell_reference(reference: &str, rows: usize, cols: usize) -> Option<Cell> {
     let mut cell = Cell { row: 0, col: 0 };
     let chars: Vec<char> = reference.chars().collect();

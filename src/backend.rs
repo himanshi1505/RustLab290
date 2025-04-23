@@ -13,6 +13,7 @@ use std::time::Duration;
 
 // #[cfg(feature = "gui")]
 use csv::{ReaderBuilder, WriterBuilder, Writer};
+use web_sys::cell_index;
 // #[cfg(feature = "gui")]
 use std::error::Error;
 
@@ -30,8 +31,8 @@ fn number_to_column_header(number: usize) -> String {
 #[derive(Debug)]
 pub struct Backend {
     grid: UnsafeCell<Vec<Vec<CellData>>>,
-    undo_stack: VecDeque<Vec<Vec<(i32, CellError, Vec<(i32, i32)>)>>>,
-    redo_stack: VecDeque<Vec<Vec<(i32, CellError, Vec<(i32, i32)>)>>>,
+    undo_stack: VecDeque<Vec<Vec<CellData>>>,
+    redo_stack: VecDeque<Vec<Vec<CellData>>>,
     rows: usize,
     cols: usize,
 
@@ -676,12 +677,36 @@ impl Backend {
         crate::parser::parse_autofill(&self, expression)
     }
 
+    pub fn parse_sort(&self, expression: &str) -> Result<(Cell, Cell, bool), Box<dyn std::error::Error>> {
+        crate::parser::parse_sort(&self, expression)
+    }
+
     pub fn get_rows(&self) -> usize {
         self.rows
     }
 
     pub fn get_cols(&self) -> usize {
         self.cols
+    }
+
+    pub fn sort(&mut self, expression: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let tup = self.parse_sort(expression);
+        let (tl_cell, br_cell, a_or_d) = match tup {
+            Ok((tl, br, a_or_d)) => (tl, br, a_or_d),
+            Err(err) => return Err(err),
+        };
+        let tl = (tl_cell.row, tl_cell.col);
+        let br = (br_cell.row, br_cell.col);
+        let mut grid_ref = unsafe {&mut *self.grid.get()};
+        grid_ref[tl.0..=br.0].sort_by(|a, b| {
+            let cmp_result = a[tl.1].value.cmp(&b[tl.1].value);
+            if a_or_d {
+                cmp_result // Ascending order
+            } else {
+                cmp_result.reverse() // Descending order
+            }
+        });
+        Ok(())
     }
 
     pub fn undo_callback(&mut self) {
@@ -702,7 +727,7 @@ impl Backend {
 
     //#[cfg(feature = "gui")]
     // Helper: Create snapshot of current state
-    pub fn create_snapshot(&self) -> Vec<Vec<(i32, CellError, Vec<(i32, i32)>)>> {
+    pub fn create_snapshot(&self) -> Vec<Vec<CellData>> {
         let mut snapshot = Vec::with_capacity(self.rows);
         for row in 0..self.rows {
             let mut row_data = Vec::with_capacity(self.cols);
@@ -711,7 +736,7 @@ impl Backend {
                 let cell_data = self.get_cell_value(row, col) ;
                 row_data.push(
                     
-                    (cell_data.value, cell_data.error, cell_data.dependents.clone())
+                    cell_data.clone()
                     
                 );
             }
@@ -723,17 +748,25 @@ impl Backend {
 
     //#[cfg(feature = "gui")]
     // Helper: Apply state snapshot
-    pub fn apply_snapshot(&mut self, snapshot: Vec<Vec<(i32, CellError, Vec<(i32, i32)>)>>) {
+    pub fn apply_snapshot(&mut self, snapshot: Vec<Vec<CellData>>) {
         for (row_idx, row) in snapshot.iter().enumerate() {
             for (col_idx, value) in row.iter().enumerate() {
                 
                 unsafe{
                     let cell_data = self.get_cell_value(row_idx, col_idx) ;
-                    cell_data.value = value.0;
-                    cell_data.error = value.1;
-                    cell_data.dependents = value.2.clone();
-                
-                
+                    let mut cell_ptr = cell_data as *mut CellData;
+                    (*cell_ptr).value = value.value;
+                    (*cell_ptr).error = value.error;
+                    (*cell_ptr).dependents = value.dependents.clone();
+                    (*cell_ptr).function = value.function;
+                    (*cell_ptr).dirty_parents = value.dirty_parents;
+                    // cell_ptr = *mut value;
+                    // cell_data.value = value.0;
+                    // cell_data.error = value.1;
+                    // cell_data.dependents = value.2.clone();
+                    // self.get_cell_value(row_idx, col_idx).value = value.0;
+                    // self.get_cell_value(row_idx, col_idx).error = value.1;
+                    // self.get_cell_value(row_idx, col_idx).dependents = value.2.clone();
                 }
         }
     }
