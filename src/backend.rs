@@ -32,8 +32,8 @@ fn number_to_column_header(number: usize) -> String {
 #[derive(Debug)]
 pub struct Backend {
     grid: UnsafeCell<Vec<Vec<CellData>>>,
-    undo_stack: VecDeque<Vec<Vec<CellData>>>,
-    redo_stack: VecDeque<Vec<Vec<CellData>>>,
+    undo_stack: VecDeque<Vec<Vec<(CellData, String)>>>,
+    redo_stack: VecDeque<Vec<Vec<(CellData, String)>>>,
     rows: usize,
     cols: usize,
 
@@ -75,7 +75,7 @@ impl Backend {
             rows,
             cols,
             // #[cfg(feature = "gui")]
-            formula_strings: vec![vec!["".to_string(); cols]; rows],
+            formula_strings: vec![vec!["=0".to_string(); cols]; rows],
             // #[cfg(feature = "gui")]
             filename: "default.csv".to_string(),
             copy_stack: vec![vec![0; 1]; 1],
@@ -409,6 +409,7 @@ impl Backend {
     
                 self.update_graph(&cell, &old_function);
                 self.update_dependents(&cell);
+                self.formula_strings[cell.row][cell.col] = "=".to_owned() + &expression.to_string();
                 return Ok(());
             }
     
@@ -459,8 +460,10 @@ impl Backend {
     
             // Propagate to dependents
             self.update_dependents(&cell);
+            
         }
-    
+        self.formula_strings[cell.row][cell.col] = expression.to_string();
+        println!("formula_strings: {:?}", self.formula_strings[cell.row][cell.col]);
         Ok(())
     }
     
@@ -730,7 +733,7 @@ impl Backend {
 
     //#[cfg(feature = "gui")]
     // Helper: Create snapshot of current state
-    pub fn create_snapshot(&self) -> Vec<Vec<CellData>> {
+    pub fn create_snapshot(&self) -> Vec<Vec<(CellData, String)>> {
         let mut snapshot = Vec::with_capacity(self.rows);
         for row in 0..self.rows {
             let mut row_data = Vec::with_capacity(self.cols);
@@ -739,7 +742,7 @@ impl Backend {
                 let cell_data = self.get_cell_value(row, col) ;
                 row_data.push(
                     
-                    cell_data.clone()
+                    (cell_data.clone(), self.formula_strings[row][col].clone())
                     
                 );
             }
@@ -751,18 +754,19 @@ impl Backend {
 
     //#[cfg(feature = "gui")]
     // Helper: Apply state snapshot
-    pub fn apply_snapshot(&mut self, snapshot: Vec<Vec<CellData>>) {
+    pub fn apply_snapshot(&mut self, snapshot: Vec<Vec<(CellData, String)>>) {
         for (row_idx, row) in snapshot.iter().enumerate() {
             for (col_idx, value) in row.iter().enumerate() {
                 
                 unsafe{
                     let cell_data = self.get_cell_value(row_idx, col_idx) ;
                     let mut cell_ptr = cell_data as *mut CellData;
-                    (*cell_ptr).value = value.value;
-                    (*cell_ptr).error = value.error;
-                    (*cell_ptr).dependents = value.dependents.clone();
-                    (*cell_ptr).function = value.function;
-                    (*cell_ptr).dirty_parents = value.dirty_parents;
+                    (*cell_ptr).value = value.0.value;
+                    (*cell_ptr).error = value.0.error;
+                    (*cell_ptr).dependents = value.0.dependents.clone();
+                    (*cell_ptr).function = value.0.function;
+                    (*cell_ptr).dirty_parents = value.0.dirty_parents;
+                    self.formula_strings[row_idx][col_idx] = value.1.clone();
                     // cell_ptr = *mut value;
                     // cell_data.value = value.0;
                     // cell_data.error = value.1;
@@ -900,6 +904,7 @@ impl Backend {
                 // println!("im htregrseznrte");
                 let cell = Cell { row, col };   
                 let res = self.set_cell_value(cell, "0");
+                println!("formula_strings: {:?}", self.formula_strings[row][col]);
                 // unsafe {(*self.grid.get().wrapping_add(row).wrapping_add(col)).value = 0;}
                 // unsafe {let cell = self.get_cell_value(row, col);
                 // cell.value = 0;}

@@ -185,6 +185,7 @@ impl Frontend {
                 }
             }
             cmd if cmd.starts_with("save(") => {
+                println!("save");
                 let res = backend::Backend::save_to_csv(&self.backend, cmd);
                 match res {
                     Ok(_) => {return true;}
@@ -254,16 +255,16 @@ impl Frontend {
                 if let Some(cell) = parse_cell_reference(cell_str, rows, cols) {
                     let row_num = cell.row;
                     let col_num = cell.col;
-                    self.backend.formula_strings[row_num][col_num] = formula.to_string();
+                    
                     println!("{}", self.backend.formula_strings[row_num][col_num]);
                     let expr = &expr_str[1..]; // skip '='
 
                     match self.backend.set_cell_value(cell, expr) {
                         Ok(_) => {
-                            #[cfg(feature = "ssr")]
+                            // #[cfg(feature = "ssr")]
                             
                             {
-                                self.backend.formula_strings[rows][cols] = expr_str.to_string();
+                                self.backend.formula_strings[row_num][col_num] = expr_str.to_string();
                             }
                             return true;
                         }
