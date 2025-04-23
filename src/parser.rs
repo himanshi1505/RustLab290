@@ -73,18 +73,17 @@ pub fn parse_cell_reference(reference: &str, rows: usize, cols: usize) -> Option
     Some(cell)
 }
 
-pub fn parse_binary_op(operand1: &str, operand2: &str, backend: &Backend) -> BinaryOp {
+pub fn parse_binary_op(operand1: &str, operand2: &str, backend: &Backend, success: &mut bool) -> BinaryOp {
+    *success = true;
     // Operand 1 processing
-    let first = if match operand1.chars().next() {
-        Some(c) => c.is_ascii_digit(),
-        None => false,
-    } {
+    let first = if operand1.chars().next().map_or(false, |c| c.is_ascii_digit()) {
         // Check if it's an integer
         let mut value = 0;
         for c in operand1.chars() {
             if c.is_ascii_digit() {
                 value = value * 10 + (c as i32 - '0' as i32);
             } else {
+                *success = false;
                 break;
             }
         }
@@ -99,24 +98,25 @@ pub fn parse_binary_op(operand1: &str, operand2: &str, backend: &Backend) -> Bin
                 type_: OperandType::Cell,
                 data: OperandData::Cell(cell),
             },
-            None => Operand {
-                type_: OperandType::Int,
-                data: OperandData::Value(0),
+            None => {
+                *success = false;
+                Operand {
+                    type_: OperandType::Int,
+                    data: OperandData::Value(0),
+                }
             },
         }
     };
 
     // Operand 2 processing
-    let second = if match operand2.chars().next() {
-        Some(c) => c.is_ascii_digit(),
-        None => false,
-    } {
+    let second = if operand2.chars().next().map_or(false, |c| c.is_ascii_digit()) {
         // Check if it's an integer
         let mut value = 0;
         for c in operand2.chars() {
             if c.is_ascii_digit() {
                 value = value * 10 + (c as i32 - '0' as i32);
             } else {
+                *success = false;
                 break;
             }
         }
@@ -131,10 +131,13 @@ pub fn parse_binary_op(operand1: &str, operand2: &str, backend: &Backend) -> Bin
                 type_: OperandType::Cell,
                 data: OperandData::Cell(cell),
             },
-            None => Operand {
+            None => {
+                *success = false;
+                Operand {
                 type_: OperandType::Int,
                 data: OperandData::Value(0),
-            },
+            }
+        },
         }
     };
 
@@ -363,7 +366,10 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
         let operand1 = &expression[..i];
         let operand2 = &expression[i + 1..];
 
-        let binary_op = parse_binary_op(operand1, operand2, backend);
+         let binary_op = parse_binary_op(operand1, operand2, backend, &success);
+        if !success {
+            return (Function::new_constant(0), false);
+        }
 
         let function_type = match operator {
             '+' => FunctionType::Plus,
