@@ -285,9 +285,17 @@ pub fn grid(props: &GridProps) -> Html {
                                 </td>
                                 {(0..props.cols).map(|col| {
                                     let key = format!("{}-{}", row, col);
-                                    let val = unsafe { 
-                                        backend.get_cell_value(row, col).value.to_string()
+                                    let celldata = unsafe { 
+                                        backend.get_cell_value(row, col)
                                     };
+                                     let val = if celldata.error == CellError::NoError {
+                                            celldata.value.to_string()
+                                        } else {
+                                            "ERR".to_string()
+                                        };
+                                    // let val = unsafe { 
+                                    //     backend.get_cell_value(row, col).value.to_string()
+                                    // };
                                     
                                     // Get background color based on relationships
                                     let bg_color = get_cell_background_color(
