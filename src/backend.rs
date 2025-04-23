@@ -49,6 +49,48 @@ pub struct Backend {
 }
 
 impl Backend {
+
+    pub fn get_cell_dependencies(&self, row: usize, col: usize) -> (Vec<(usize, usize)>, Vec<(usize, usize)>) {
+        let mut parents = Vec::new();
+        let mut children = Vec::new();
+
+        unsafe {
+            let cell_data = self.get_cell_value(row, col);
+
+            // Collect children (dependents)
+            for &(child_row, child_col) in &cell_data.dependents {
+                children.push((child_row as usize, child_col as usize));
+            }
+
+            // Collect parents (cells this cell depends on)
+            match &cell_data.function.data {
+                FunctionData::RangeFunction(range) => {
+                    for r in range.top_left.row..=range.bottom_right.row {
+                        for c in range.top_left.col..=range.bottom_right.col {
+                            parents.push((r, c));
+                        }
+                    }
+                }
+                FunctionData::BinaryOp(bin_op) => {
+                    if let OperandData::Cell(dep) = bin_op.first.data {
+                        parents.push((dep.row, dep.col));
+                    }
+                    if let OperandData::Cell(dep) = bin_op.second.data {
+                        parents.push((dep.row, dep.col));
+                    }
+                }
+                FunctionData::SleepValue(operand) => {
+                    if let OperandData::Cell(dep) = operand.data {
+                        parents.push((dep.row, dep.col));
+                    }
+                }
+                FunctionData::Value(_) => {} // No parents for constant values
+            }
+        }
+
+        (parents, children)
+    }
+    
     pub fn get_rows_col(&self) -> (usize, usize) {
         (self.rows, self.cols)
     }
