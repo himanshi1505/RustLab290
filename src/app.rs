@@ -451,7 +451,51 @@ pub fn tab_bar(props: &TabBarProps) -> Html {
     let file_input_ref = use_node_ref();
     let rows = props.rows;
     let cols = props.cols;
-
+    //Undo and Redo functionality
+    let undo_onclick = {
+        let frontend = frontend.clone();
+        let status_message = status_message.clone();
+        
+        Callback::from(move |_: MouseEvent| {
+            let mut frontend = frontend.borrow_mut();
+            let backend = frontend.get_backend_mut();
+            backend.undo_callback();
+                status_message.set("Undo successful".to_string());
+            // if backend.can_undo() {
+            //     backend.undo();
+            //     status_message.set("Undo successful".to_string());
+            // } else {
+            //     status_message.set("No more undos available".to_string());
+            // }
+            // Clear message after 3 seconds
+            let status_message = status_message.clone();
+            gloo::timers::callback::Timeout::new(3000, move || {
+                status_message.set(String::new());
+            }).forget();
+        })
+    };
+    let redo_onclick = {
+        let frontend = frontend.clone();
+        let status_message = status_message.clone();
+        
+        Callback::from(move |_: MouseEvent| {
+            let mut frontend = frontend.borrow_mut();
+            let backend = frontend.get_backend_mut();
+            backend.redo_callback();
+            status_message.set("Redo successful".to_string());
+            // if backend.can_redo() {
+            //     backend.redo();
+            //     status_message.set("Redo successful".to_string());
+            // } else {
+            //     status_message.set("No more redos available".to_string());
+            // }
+            // Clear message after 3 seconds
+            let status_message = status_message.clone();
+            gloo::timers::callback::Timeout::new(3000, move || {
+                status_message.set(String::new());
+            }).forget();
+        })
+    };
     // Save functionality
     let save_onclick = {
         let frontend = frontend.clone();
@@ -558,6 +602,9 @@ pub fn tab_bar(props: &TabBarProps) -> Html {
         <div style="background-color: #eee; padding: 10px; display: flex; align-items: center; gap: 10px;">
             <button onclick={save_onclick}>{ "Save" }</button>
             <button onclick={load_onclick}>{ "Load" }</button>
+            <button onclick={undo_onclick}>{ "Undo" }</button>
+            <button onclick={redo_onclick}>{ "Redo" }</button>
+            
             <input
                 type="file"
                 accept=".csv"
