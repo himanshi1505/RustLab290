@@ -107,128 +107,162 @@ pub fn grid(props: &GridProps) -> Html {
     let selected_cell = props.selected_cell.clone();
     let backend = frontend.get_backend_mut();
     
-   
-
+    // Fixed dimensions - set width to accommodate "WWW" comfortably
+    const CELL_WIDTH: &str = "80px";  // Wide enough for "WWW"
+    const CELL_HEIGHT: &str = "24px";
+    const HEADER_COLOR: &str = "#f0f0f0";
+    const PARENT_HIGHLIGHT_COLOR: &str = "#ffeecc";  // Light orange for parents
+    const CHILD_HIGHLIGHT_COLOR: &str = "#ccffcc";   // Light green for children
+    const SELECTED_HIGHLIGHT_COLOR: &str = "#e6f3ff"; // Original selected color
     
-     // Fixed dimensions - set width to accommodate "WWW" comfortably
-     const CELL_WIDTH: &str = "80px";  // Wide enough for "WWW"
-     const CELL_HEIGHT: &str = "24px";
-     const HEADER_COLOR: &str = "#f0f0f0";
- 
-     // Function to convert column index to letter (0 -> A, 1 -> B, etc.)
-     fn col_to_letter(col: usize) -> String {
-         let mut result = String::new();
-         let mut n = col;
-         while n >= 0 {
-             result.insert(0, (b'A' + (n % 26) as u8) as char);
-             if n < 26 { break; }
-             n = n / 26 - 1;
-         }
-         result
-     }
- 
-     html! {
+    // Get the current relationships for the selected cell using backend function
+    let (parent_cells, child_cells) = {
+        let (row, col) = *selected_cell;
+        backend.get_cell_dependencies(row, col)
+    };
+    
+    // Function to convert column index to letter (0 -> A, 1 -> B, etc.)
+    fn col_to_letter(col: usize) -> String {
+        let mut result = String::new();
+        let mut n = col;
+        while n >= 0 {
+            result.insert(0, (b'A' + (n % 26) as u8) as char);
+            if n < 26 { break; }
+            n = n / 26 - 1;
+        }
+        result
+    }
+    
+    // Function to determine cell background color based on relationships
+    fn get_cell_background_color(
+        row: usize, 
+        col: usize, 
+        selected: (usize, usize), 
+        parents: &[(usize, usize)], 
+        children: &[(usize, usize)]
+    ) -> &'static str {
+        if (row, col) == selected {
+            SELECTED_HIGHLIGHT_COLOR
+        } else if parents.contains(&(row, col)) {
+            PARENT_HIGHLIGHT_COLOR
+        } else if children.contains(&(row, col)) {
+            CHILD_HIGHLIGHT_COLOR
+        } else {
+            "white"
+        }
+    }
+    
+    html! {
         <div style="overflow: auto; height: 100%; width: 100%;">
-        <table style={format!(
-            "border-collapse: collapse;
-            table-layout: fixed;
-            width: calc(30px + {} * {});",
-            props.cols, CELL_WIDTH
-        )}> <thead>
-                     <tr style="height: {CELL_HEIGHT};">
-                         <th style="
-                             width: 30px;
-                             background: {HEADER_COLOR};
-                             border: 1px solid #ddd;
-                             position: sticky;
-                             top: 0;
-                             z-index: 2;
-                         "></th>
-                         {(0..props.cols).map(|col| {
-                             let letter = col_to_letter(col);
-                             html! {
-                                 <th 
-                                     key={format!("col-{}", col)}
-                                     style="
-                                         width: {CELL_WIDTH};
-                                         background: {HEADER_COLOR};
-                                         border: 1px solid #ddd;
-                                         text-align: center;
-                                         font-weight: bold;
-                                         position: sticky;
-                                         top: 0;
-                                         z-index: 1;
-                                         overflow: hidden;
-                                         text-overflow: ellipsis;
-                                     "
-                                 >
-                                     {letter}
-                                 </th>
-                             }
-                         }).collect::<Html>()}
-                     </tr>
-                 </thead>
-                 <tbody>
-                     {(0..props.rows).map(|row| {
-                         html! {
-                             <tr key={row.to_string()} style="height: {CELL_HEIGHT};">
-                                 <td style="
-                                     width: 30px;
-                                     background: {HEADER_COLOR};
-                                     border: 1px solid #ddd;
-                                     text-align: center;
-                                     font-weight: bold;
-                                     position: sticky;
-                                     left: 0;
-                                     z-index: 1;
-                                 ">
-                                     {row + 1}
-                                 </td>
-                                 {(0..props.cols).map(|col| {
-                                     let key = format!("{}-{}", row, col);
-                                     let val = unsafe { 
-                                         backend.get_cell_value(row, col).value.to_string()
-                                     };
-                                     let is_selected = *selected_cell == (row, col);
-                                     
-                                     let cell_style = format!("
-                                         width: {CELL_WIDTH};
-                                         height: {CELL_HEIGHT};
-                                         border: 1px solid #ddd;
-                                         padding: 2px;
-                                         background-color: {};
-                                         text-align: left;
-                                         vertical-align: middle;
-                                         overflow: hidden;
-                                         text-overflow: ellipsis;
-                                         white-space: nowrap;
-                                     ", if is_selected { "#e6f3ff" } else { "white" });
- 
-                                     let onclick = {
-                                         let selected_cell = selected_cell.clone();
-                                         Callback::from(move |_| {
-                                             selected_cell.set((row, col));
-                                         })
-                                     };
- 
-                                     html! {
-                                         <td 
-                                             key={key}
-                                             style={cell_style}
-                                             {onclick}
-                                         >
-                                             {val}
-                                         </td>
-                                     }
-                                 }).collect::<Html>()}
-                             </tr>
-                         }
-                     }).collect::<Html>()}
-                 </tbody>
-             </table>
-         </div>
-     }
- }
+            <table style={format!(
+                "border-collapse: collapse;
+                table-layout: fixed;
+                width: calc(30px + {} * {});",
+                props.cols, CELL_WIDTH
+            )}>
+                <thead>
+                    <tr style="height: {CELL_HEIGHT};">
+                        <th style="
+                            width: 30px;
+                            background: {HEADER_COLOR};
+                            border: 1px solid #ddd;
+                            position: sticky;
+                            top: 0;
+                            z-index: 2;
+                        "></th>
+                        {(0..props.cols).map(|col| {
+                            let letter = col_to_letter(col);
+                            html! {
+                                <th 
+                                    key={format!("col-{}", col)}
+                                    style="
+                                        width: {CELL_WIDTH};
+                                        background: {HEADER_COLOR};
+                                        border: 1px solid #ddd;
+                                        text-align: center;
+                                        font-weight: bold;
+                                        position: sticky;
+                                        top: 0;
+                                        z-index: 1;
+                                        overflow: hidden;
+                                        text-overflow: ellipsis;
+                                    "
+                                >
+                                    {letter}
+                                </th>
+                            }
+                        }).collect::<Html>()}
+                    </tr>
+                </thead>
+                <tbody>
+                    {(0..props.rows).map(|row| {
+                        html! {
+                            <tr key={row.to_string()} style="height: {CELL_HEIGHT};">
+                                <td style="
+                                    width: 30px;
+                                    background: {HEADER_COLOR};
+                                    border: 1px solid #ddd;
+                                    text-align: center;
+                                    font-weight: bold;
+                                    position: sticky;
+                                    left: 0;
+                                    z-index: 1;
+                                ">
+                                    {row + 1}
+                                </td>
+                                {(0..props.cols).map(|col| {
+                                    let key = format!("{}-{}", row, col);
+                                    let val = unsafe { 
+                                        backend.get_cell_value(row, col).value.to_string()
+                                    };
+                                    
+                                    // Get background color based on relationships
+                                    let bg_color = get_cell_background_color(
+                                        row, 
+                                        col, 
+                                        *selected_cell, 
+                                        &parent_cells, 
+                                        &child_cells
+                                    );
+                                    
+                                    let cell_style = format!("
+                                        width: {CELL_WIDTH};
+                                        height: {CELL_HEIGHT};
+                                        border: 1px solid #ddd;
+                                        padding: 2px;
+                                        background-color: {};
+                                        text-align: left;
+                                        vertical-align: middle;
+                                        overflow: hidden;
+                                        text-overflow: ellipsis;
+                                        white-space: nowrap;
+                                    ", bg_color);
+
+                                    let onclick = {
+                                        let selected_cell = selected_cell.clone();
+                                        Callback::from(move |_| {
+                                            selected_cell.set((row, col));
+                                        })
+                                    };
+
+                                    html! {
+                                        <td 
+                                            key={key}
+                                            style={cell_style}
+                                            {onclick}
+                                        >
+                                            {val}
+                                        </td>
+                                    }
+                                }).collect::<Html>()}
+                            </tr>
+                        }
+                    }).collect::<Html>()}
+                </tbody>
+            </table>
+        </div>
+    }
+}
 // #[function_component(FormulaBar)]
 // pub fn formula_bar() -> Html {
 //     let formula = use_state(|| String::new());
