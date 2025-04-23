@@ -13,7 +13,8 @@ use std::time::Duration;
 
 // #[cfg(feature = "gui")]
 use csv::{ReaderBuilder, WriterBuilder, Writer};
-use web_sys::cell_index;
+// use web_sys::cell_index;
+// use web_sys::HtmlTableCellElement;
 // #[cfg(feature = "gui")]
 use std::error::Error;
 

@@ -37,12 +37,14 @@ pub fn parse_sort(backend: &Backend, expression: &str) -> Result<(Cell, Cell, bo
     // println!("Parsing sort command: {}", expression);
     let start_pos = 6; // "SORTA( or SORTD("
     let mut a_or_d = true; // true for ascending, false for descending
-    let posi: &str = &expression[4 as usize..4 as usize];
-    if posi == "A" {
+    let posi: &str = &expression[4 as usize..5 as usize];
+    // println!("{}", posi);
+    if posi == "a" {
         a_or_d = true;
-    } else if posi == "D" {
+    } else if posi == "d" {
         a_or_d = false;
     } else {
+        // println!("error");
         return Err("Invalid command".to_string().into());
     }
     let content = &expression[start_pos..];
@@ -411,7 +413,7 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
         let operand1 = &expression[..i];
         let operand2 = &expression[i + 1..];
 
-         let binary_op = parse_binary_op(operand1, operand2, backend, &success);
+         let binary_op = parse_binary_op(operand1, operand2, backend, &mut success);
         if !success {
             return (Function::new_constant(0), false);
         }

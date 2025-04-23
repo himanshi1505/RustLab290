@@ -1,7 +1,7 @@
 use crate::backend::*;
 use crate::parser::*;
 use crate::structs::*;
-use std::arch::x86_64::_CMP_UNORD_Q;
+// use std::arch::x86_64::_CMP_UNORD_Q;
 use std::cmp::{max, min};
 use std::io::{self, Write};
 use std::time::Instant;
@@ -225,6 +225,7 @@ impl Frontend {
                 }
             }
             cmd if cmd.starts_with("sort") => {
+                println!("sort");
                 self.backend.push_undo_state();
                 let res = backend::Backend::sort(&mut self.backend, cmd);
                 match res {
