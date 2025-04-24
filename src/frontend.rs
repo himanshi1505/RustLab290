@@ -2,13 +2,12 @@ use crate::backend::*;
 use crate::parser::*;
 use crate::structs::*;
 // use std::arch::x86_64::_CMP_UNORD_Q;
-use std::cmp::{max, min};
+use std::cmp::min;
 use std::io::{self, Write};
 use std::time::Instant;
 #[cfg(feature = "gui")]
 use std::cell::RefCell;
 
-use crate::backend;
 
 const MAX_WIDTH: usize = 10;
 
@@ -45,6 +44,7 @@ impl Frontend {
     pub fn get_backend_mut(&mut self) -> &mut Backend {
         &mut self.backend
     }
+    #[cfg(feature = "gui")]
     pub fn get_rows_col(&self) -> (usize,usize) {
         (self.rows,self.cols)
     }
@@ -253,14 +253,16 @@ impl Frontend {
             .unwrap_or(false)
         {
             if let Some(eq_pos) = input.find('=') {
-                
+                #[cfg(feature = "gui")]
                 let formula = input[eq_pos..].trim();
                 let (cell_str, expr_str) = input.split_at(eq_pos);
                 let (rows, cols) = self.backend.get_rows_col();
                 #[cfg(feature = "gui")]
                 self.backend.push_undo_state();
                 if let Some(cell) = parse_cell_reference(cell_str, rows, cols) {
+                    #[cfg(feature = "gui")]
                     let row_num = cell.row;
+                    #[cfg(feature = "gui")]
                     let col_num = cell.col;
                     
                     
@@ -273,12 +275,12 @@ impl Frontend {
                             {
                                 self.backend.formula_strings[row_num][col_num] = expr_str.to_string();
                             }
-                            return true;
+                            true
                         }
                         Err(_) => false,
                     }
                 } else {
-                    return false;
+                    false
                 }
             } else {
                 false

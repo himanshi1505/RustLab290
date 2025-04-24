@@ -123,7 +123,7 @@ pub fn parse_cell_reference(reference: &str, rows: usize, cols: usize) -> Option
 pub fn parse_binary_op(operand1: &str, operand2: &str, backend: &Backend, success: &mut bool) -> BinaryOp {
     *success = true;
     // Operand 1 processing
-    let first = if operand1.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+    let first = if operand1.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         // Check if it's an integer
         let mut value = 0;
         for c in operand1.chars() {
@@ -156,7 +156,7 @@ pub fn parse_binary_op(operand1: &str, operand2: &str, backend: &Backend, succes
     };
 
     // Operand 2 processing
-    let second = if operand2.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+    let second = if operand2.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         // Check if it's an integer
         let mut value = 0;
         for c in operand2.chars() {
@@ -345,7 +345,7 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
     let mut success = false;
     // Check if it's possible to be a parenthesis function (>=4 is the size)
     // println!("{}", expression.len());
-    if (expression.len() == 0) {
+    if expression.is_empty() {
         success = false;
         return (Function::new_constant(0), success);
     }
@@ -361,9 +361,8 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
             return parse_range_function(expression, FunctionType::Sum, backend);
         } else if expression.starts_with("STDEV(") {
             return parse_range_function(expression, FunctionType::Stdev, backend);
-        } else if expression.starts_with("SLEEP(") {
+        } else if let Some(content) = expression.strip_prefix("SLEEP(") {
             // Parse sleep function
-            let content = &expression[6..];
             // println!("content: {:?}", content);
             let end_pos = match content.find(')') {
                 Some(pos) => pos,
@@ -375,7 +374,7 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
             if value_str
                 .chars()
                 .next()
-                .map_or(false, |c| c.is_ascii_digit() || c == '-')
+                .is_some_and(|c| c.is_ascii_digit() || c == '-')
             {
                 match value_str.parse::<i32>() {
                     Ok(value) => return (Function::new_sleep(value), true),
@@ -426,7 +425,7 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
             _ => return (Function::new_constant(0), false),
         };
         success = true;
-        return (Function::new_binary_op(function_type, binary_op), success);
+        (Function::new_binary_op(function_type, binary_op), success)
     } else {
         // Not a binary op, could be a constant or a cell reference
 
@@ -436,8 +435,8 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
         } {
             // First char is a number or a minus sign, it's a constant
             match expression.parse::<i32>() {
-                Ok(value) => return (Function::new_constant(value), true),
-                Err(_) => return (Function::new_constant(0), false),
+                Ok(value) => (Function::new_constant(value), true),
+                Err(_) => (Function::new_constant(0), false),
             }
         } else {
             // Parse as cell reference
@@ -459,10 +458,10 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
                 second: operand2,
             };
             success = true;
-            return (
+            (
                 Function::new_binary_op(FunctionType::Plus, binary_op),
                 success,
-            );
+            )
         }
     }
 }

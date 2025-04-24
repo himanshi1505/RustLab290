@@ -1,5 +1,3 @@
-use std::cell::UnsafeCell;
-use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cell {
@@ -18,7 +16,7 @@ pub enum CellError {
 pub enum ExpressionError {
     CouldNotParse,
     CircularDependency,
-    NoError,
+    
 }
 
 //checked

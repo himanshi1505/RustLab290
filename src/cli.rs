@@ -26,7 +26,7 @@ pub fn main() {
         eprintln!("Usage: {} [rows columns]", args[0]);
         process::exit(1);
     }
-    if (rows > 999 || rows < 1 || cols > 18278 || cols < 1) {
+    if !(1..=999).contains(&rows) || !(1..=18278).contains(&cols) {
         // eprintln!("Invalid argument for rows or columns: {} {}", rows, cols);
         process::exit(1);
     }

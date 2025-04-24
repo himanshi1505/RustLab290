@@ -1,10 +1,7 @@
-use crate::parser::*;
 use crate::structs::*;
 use std::cell::UnsafeCell;
 use std::cmp::{max, min};
-use std::ptr::eq;
 use std::time::Duration;
-use std::error::Error;
 use std::thread;
 use std::f64;
 
@@ -15,7 +12,6 @@ use std::collections::VecDeque;
 use std::fs::File;
 #[cfg(feature = "gui")]
 use std::io::{BufReader, BufWriter};
-use std::rc::Rc;
 
 #[cfg(feature = "gui")]
 
@@ -60,7 +56,7 @@ pub struct Backend {
 }
 
 impl Backend {
-
+    #[cfg(feature = "gui")]
     pub fn get_cell_dependencies(&self, row: usize, col: usize) -> (Vec<(usize, usize)>, Vec<(usize, usize)>) {
         let mut parents = Vec::new();
         let mut children = Vec::new();
@@ -101,15 +97,15 @@ impl Backend {
 
         (parents, children)
     }
-    
+   
     pub fn get_rows_col(&self) -> (usize, usize) {
         (self.rows, self.cols)
     }
     pub fn new(rows: usize, cols: usize) -> Self {
         let mut grid = Vec::with_capacity(rows);
-        for row in 0..rows {
+        for _row in 0..rows {
             let mut row_vec = Vec::with_capacity(cols);
-            for col in 0..cols {
+            for _col in 0..cols {
                 row_vec.push(CellData {
                     value: 0,
                     dependents: Vec::new(),
@@ -137,6 +133,7 @@ impl Backend {
             copy_stack: vec![vec![0; 1]; 1],
         }
     }
+    #[cfg(feature = "gui")]
     pub fn reset(&mut self) {
         let grid = unsafe { &mut *self.grid.get() };
         for row in grid {
@@ -182,10 +179,10 @@ impl Backend {
         let start_cell = self.get_cell_value(start.row, start.col);
         let start_cell_ptr = start_cell as *const CellData;
         let mut stack = vec![start_cell_ptr];
-        unsafe { (*start_cell).dirty_parents = 1; }
+        start_cell.dirty_parents = 1; 
         
         while let Some(current_ptr) = stack.pop() {
-            let current = unsafe { &*current_ptr };
+            let current = &*current_ptr ;
             let deps = &current.dependents;
         
             // First pass: check for cycles and collect new deps to process
@@ -367,6 +364,7 @@ impl Backend {
     }
 
     /// Checks if this function can be safely replaced with a constant value
+    #[cfg(feature = "gui")]
     pub fn is_expression_constant(&self, func: &Function) -> bool {
         match func.type_ {
             FunctionType::Plus
@@ -452,8 +450,8 @@ impl Backend {
     
       
             // Copy old state
-            let old_function = (*cell_ptr).function.clone();
-            let old_value = (*cell_ptr).value;
+            let old_function = (*cell_ptr).function;
+            //let old_value = (*cell_ptr).value;
     
             // Handle constant function early
             if new_function.type_ == FunctionType::Constant {
@@ -500,7 +498,7 @@ impl Backend {
             }
     
             // Set new function
-            (*cell_ptr).function = new_function.clone();
+            (*cell_ptr).function = new_function;
     
             // Update graph (remove old edges)
             self.update_graph(&cell, &old_function);
@@ -534,7 +532,7 @@ impl Backend {
         let mut min_val = i32::MAX;
         for row in range.top_left.row..=range.bottom_right.row {
             for col in range.top_left.col..=range.bottom_right.col {
-                let cell = Cell { row, col };
+                
                unsafe{  let cell_data= self.get_cell_value(row,col);
                     
                     match cell_data.error {
@@ -555,7 +553,7 @@ impl Backend {
         let mut max_val = i32::MIN;
         for row in range.top_left.row..=range.bottom_right.row {
             for col in range.top_left.col..=range.bottom_right.col {
-                let cell = Cell { row, col };
+                
                
                    
                 unsafe{  let cell_data= self.get_cell_value(row,col);
@@ -578,7 +576,7 @@ impl Backend {
         let mut count = 0;
         for row in range.top_left.row..=range.bottom_right.row {
             for col in range.top_left.col..=range.bottom_right.col {
-                let cell = Cell { row, col };
+                
                
                 unsafe{  let cell_data= self.get_cell_value(row,col);
                       
@@ -605,8 +603,7 @@ impl Backend {
         let mut sum = 0;
         for row in range.top_left.row..=range.bottom_right.row {
             for col in range.top_left.col..=range.bottom_right.col {
-                let cell = Cell { row, col };
-               
+                
                     
                         unsafe{  let cell_data= self.get_cell_value(row,col);
                    
@@ -666,13 +663,13 @@ impl Backend {
         let variance = variance_sum / count as f64;
         // println!("stdev: {:?}", (variance as f64).sqrt() as i32);
         // Return standard deviation as integer (floored)
-        Ok((variance as f64).sqrt().round() as i32)
+        Ok(variance.sqrt().round() as i32)
     }
 
     pub fn sleep_function(&self, operand: &Operand) -> Result<i32, CellError> {
         let value = self.get_operand_value(operand)?;
         // println!("value: {:?}", value);
-        if (value > 0) {
+        if value > 0 {
             thread::sleep(Duration::from_secs(value as u64));
         }
         Ok(value)
@@ -717,9 +714,9 @@ impl Backend {
 
                 // Check for errors in the cell
                 match cell_data.error {
-                    CellError::NoError => return Ok(cell_data.value),
-                    CellError::DivideByZero => return Err(CellError::DivideByZero),
-                    CellError::DependencyError => return Err(CellError::DependencyError),
+                    CellError::NoError => Ok(cell_data.value),
+                    CellError::DivideByZero => Err(CellError::DivideByZero),
+                    CellError::DependencyError => Err(CellError::DependencyError),
                 }
             }}
             OperandData::Value(value) => Ok(value),
@@ -727,7 +724,7 @@ impl Backend {
     }
    
     pub fn parse_expression(&self, expression: &str) -> (Function, bool) {
-        crate::parser::parse_expression(expression, &self)
+        crate::parser::parse_expression(expression, self)
     }
     #[cfg(feature = "gui")]
     pub fn parse_load_or_save_cmd(expression: &str) -> Option<String> {
