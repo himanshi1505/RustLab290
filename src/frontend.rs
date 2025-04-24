@@ -84,9 +84,9 @@ impl Frontend {
            
                        
                         // println!("data.error: {:?}", data.error);
-                        match data.error {
+                        match (*data).error {
                             CellError::NoError => {
-                                print!("{:<width$}", data.value, width = self.cell_width);
+                                print!("{:<width$}", (*data).value, width = self.cell_width);
                             }
                             _ => {
                                 // println!("in printing ERR");

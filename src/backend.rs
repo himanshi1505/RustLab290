@@ -144,10 +144,11 @@ impl Backend {
     }
 
     // Unsafe mutable access
-    pub unsafe fn get_cell_value(&self, row:usize,col:usize) -> &mut CellData {
-        let grid = unsafe { &mut *self.grid.get() };
-        &mut grid[row][col]
+    pub unsafe fn get_cell_value(&self, row: usize, col: usize) -> *mut CellData {
+        let grid_ptr = (*self.grid.get())[row].as_mut_ptr();
+        grid_ptr.add(col)
     }
+    
 
 
     // pub fn get_cell_error(&self, cell: &Cell) -> CellError {
@@ -156,16 +157,16 @@ impl Backend {
     pub fn reset_found(&mut self, start: &Cell) {
         unsafe {
             let start_cell = self.get_cell_value(start.row, start.col);
-            start_cell.dirty_parents = 0;
+            (*start_cell).dirty_parents = 0;
             let mut stack = vec![start_cell];
     
             while let Some(current) = stack.pop() {
-                let deps = &current.dependents; // Access the dependents vector
+                let deps = &(*current).dependents; // Access the dependents vector
                 for &(row, col) in deps.iter() {
                     let dep = self.get_cell_value(row as usize, col as usize); // Access the dependent cell
     
-                    if dep.dirty_parents > 0 {
-                        dep.dirty_parents = 0;
+                    if (*dep).dirty_parents > 0 {
+                        (*dep).dirty_parents = 0;
                         stack.push(dep);
                     }
                 }
@@ -179,7 +180,7 @@ impl Backend {
         let start_cell = self.get_cell_value(start.row, start.col);
         let start_cell_ptr = start_cell as *const CellData;
         let mut stack = vec![start_cell_ptr];
-        start_cell.dirty_parents = 1; 
+        (*start_cell).dirty_parents = 1; 
         
         while let Some(current_ptr) = stack.pop() {
             let current = &*current_ptr ;
@@ -205,8 +206,8 @@ impl Backend {
                     // Second pass: push unvisited deps
                     for dep_ptr in &deps_to_check {
                         let dep = self.get_cell_value(dep_ptr.0 as usize, dep_ptr.1 as usize);
-                        if dep.dirty_parents == 0 {
-                            dep.dirty_parents = 1;
+                        if (*dep).dirty_parents == 0 {
+                            (*dep).dirty_parents = 1;
                             stack.push(dep);
                         }
                     }
@@ -230,7 +231,7 @@ impl Backend {
                     for row in range.top_left.row..=range.bottom_right.row {
                         for col in range.top_left.col..=range.bottom_right.col {
                             let parent_data = self.get_cell_value(row, col);
-                            let deps = &mut parent_data.dependents;
+                            let deps = &mut (*parent_data).dependents;
                             deps.retain(|&(r, c)| !(r == cell.row as i32 && c == cell.col as i32));
                         }
                     }
@@ -239,12 +240,12 @@ impl Backend {
                 FunctionData::BinaryOp(bin_op) => {
                     if let OperandData::Cell(dep) = bin_op.first.data {
                         let parent_data = self.get_cell_value(dep.row, dep.col);
-                        let deps = &mut parent_data.dependents;
+                        let deps = &mut (*parent_data).dependents;
                         deps.retain(|&(r, c)| !(r == cell.row as i32 && c == cell.col as i32));
                     }
                     if let OperandData::Cell(dep) = bin_op.second.data {
                         let parent_data = self.get_cell_value(dep.row, dep.col);
-                        let deps = &mut parent_data.dependents;
+                        let deps = &mut (*parent_data).dependents;
                         deps.retain(|&(r, c)| !(r == cell.row as i32 && c == cell.col as i32));
                     }
                 }
@@ -252,7 +253,7 @@ impl Backend {
                 FunctionData::SleepValue(operand) => {
                     if let OperandData::Cell(dep) = operand.data {
                         let parent_data = self.get_cell_value(dep.row, dep.col);
-                        let deps = &mut parent_data.dependents;
+                        let deps = &mut (*parent_data).dependents;
                         deps.retain(|&(r, c)| !(r == cell.row as i32 && c == cell.col as i32));
                     }
                 }
@@ -261,12 +262,12 @@ impl Backend {
             }
     
             // Add new dependencies
-            match &cell_data.function.data {
+            match &(*cell_data).function.data {
                 FunctionData::RangeFunction(range) => {
                     for row in range.top_left.row..=range.bottom_right.row {
                         for col in range.top_left.col..=range.bottom_right.col {
                             let parent_data = self.get_cell_value(row, col);
-                            let deps = &mut parent_data.dependents;
+                            let deps = &mut (*parent_data).dependents;
                             deps.push((cell.row as i32, cell.col as i32));
                         }
                     }
@@ -275,12 +276,12 @@ impl Backend {
                 FunctionData::BinaryOp(bin_op) => {
                     if let OperandData::Cell(dep) = bin_op.first.data {
                         let parent_data = self.get_cell_value(dep.row, dep.col);
-                        let deps = &mut parent_data.dependents;
+                        let deps =&mut (*parent_data).dependents;
                         deps.push((cell.row as i32, cell.col as i32));
                     }
                     if let OperandData::Cell(dep) = bin_op.second.data {
                         let parent_data = self.get_cell_value(dep.row, dep.col);
-                        let deps = &mut parent_data.dependents;
+                        let deps = &mut (*parent_data).dependents;
                         deps.push((cell.row as i32, cell.col as i32));
                     }
                 }
@@ -288,7 +289,7 @@ impl Backend {
                 FunctionData::SleepValue(operand) => {
                     if let OperandData::Cell(dep) = operand.data {
                         let parent_data = self.get_cell_value(dep.row, dep.col);
-                        let deps = &mut parent_data.dependents;
+                        let deps = &mut (*parent_data).dependents;
                         deps.push((cell.row as i32, cell.col as i32));
                     }
                 }
@@ -303,7 +304,7 @@ impl Backend {
     pub fn set_dirty_parents(&mut self, cell: &Cell, stack: &mut Vec<*mut CellData>) {
         unsafe {
             let root_data = self.get_cell_value(cell.row, cell.col);
-            let root_ptr = root_data as *mut CellData;
+            let root_ptr = root_data ;
     
             (*root_ptr).dirty_parents = 0;
             stack.push(root_ptr);
@@ -314,7 +315,7 @@ impl Backend {
     
                 for &(row, col) in deps.iter() {
                     let child_data = self.get_cell_value(row as usize, col as usize);
-                    let child_ptr = child_data as *mut CellData;
+                    let child_ptr = child_data ;
     
                     if (*child_ptr).dirty_parents == 0 {
                         stack.push(child_ptr);
@@ -337,10 +338,10 @@ impl Backend {
             let cell_data = self.get_cell_value(cell.row, cell.col);
     
             // Process the dependents of the initial cell
-            for &(row, col) in cell_data.dependents.iter() {
+            for &(row, col) in (*cell_data).dependents.iter() {
                 let child_data = self.get_cell_value(row as usize, col as usize);
-                child_data.dirty_parents -= 1;
-                if child_data.dirty_parents == 0 {
+                (*child_data).dirty_parents -= 1;
+                if (*child_data).dirty_parents == 0 {
                     process_stack.push((row as usize, col as usize));
                 }
             }
@@ -348,14 +349,14 @@ impl Backend {
             // Process the stack of dependent cells
             while let Some((row, col)) = process_stack.pop() {
                 let current_data = self.get_cell_value(row, col);
-                let (new_value, error) = self.evaluate_expression(&current_data.function);
-                current_data.value = new_value;
-                current_data.error = error;
+                let (new_value, error) = self.evaluate_expression(&(*current_data).function);
+                (*current_data).value = new_value;
+                (*current_data).error = error;
     
-                for &(dep_row, dep_col) in current_data.dependents.iter() {
+                for &(dep_row, dep_col) in (*current_data).dependents.iter() {
                     let dependent_data = self.get_cell_value(dep_row as usize, dep_col as usize);
-                    dependent_data.dirty_parents -= 1;
-                    if dependent_data.dirty_parents == 0 {
+                    (*dependent_data).dirty_parents -= 1;
+                    if (*dependent_data).dirty_parents == 0 {
                         process_stack.push((dep_row as usize, dep_col as usize));
                     }
                 }
@@ -446,7 +447,7 @@ impl Backend {
         unsafe { let cell_data = self
             .get_cell_value(cell.row,cell.col);
 
-        let cell_ptr = cell_data as *mut CellData;
+        let cell_ptr = cell_data ;
     
       
             // Copy old state
@@ -535,9 +536,9 @@ impl Backend {
                 
                unsafe{  let cell_data= self.get_cell_value(row,col);
                     
-                    match cell_data.error {
+                    match (*cell_data).error {
                         CellError::NoError => {
-                            min_val = min(min_val, cell_data.value);
+                            min_val = min(min_val, (*cell_data).value);
                         }
                         CellError::DivideByZero => return Err(CellError::DivideByZero),
                         CellError::DependencyError => return Err(CellError::DependencyError),
@@ -557,9 +558,9 @@ impl Backend {
                
                    
                 unsafe{  let cell_data= self.get_cell_value(row,col);
-                        match cell_data.error {
+                        match (*cell_data).error {
                             CellError::NoError => {
-                                max_val = max(max_val, cell_data.value);
+                                max_val = max(max_val, (*cell_data).value);
                             }
                             CellError::DivideByZero => return Err(CellError::DivideByZero),
                             CellError::DependencyError => return Err(CellError::DependencyError),
@@ -580,9 +581,9 @@ impl Backend {
                
                 unsafe{  let cell_data= self.get_cell_value(row,col);
                       
-                        match cell_data.error {
+                        match (*cell_data).error {
                             CellError::NoError => {
-                                sum += cell_data.value;
+                                sum += (*cell_data).value;
                                 count += 1;
                             }
                             CellError::DivideByZero => return Err(CellError::DivideByZero),
@@ -607,9 +608,9 @@ impl Backend {
                     
                         unsafe{  let cell_data= self.get_cell_value(row,col);
                    
-                        match cell_data.error {
+                        match (*cell_data).error {
                             CellError::NoError => {
-                                sum += cell_data.value;
+                                sum += (*cell_data).value;
                             }
                             CellError::DivideByZero => return Err(CellError::DivideByZero),
                             CellError::DependencyError => return Err(CellError::DependencyError),
@@ -631,9 +632,9 @@ impl Backend {
                
                 unsafe{ let cell_data = self.get_cell_value(row,col); 
                      
-                        match cell_data.error {
+                        match (*cell_data).error {
                             CellError::NoError => {
-                                let value = cell_data.value;
+                                let value = (*cell_data).value;
                                 values.push(value);
                                 sum += value;
                                 count += 1;
@@ -713,8 +714,8 @@ impl Backend {
                 
 
                 // Check for errors in the cell
-                match cell_data.error {
-                    CellError::NoError => Ok(cell_data.value),
+                match (*cell_data).error {
+                    CellError::NoError => Ok((*cell_data).value),
                     CellError::DivideByZero => Err(CellError::DivideByZero),
                     CellError::DependencyError => Err(CellError::DependencyError),
                 }

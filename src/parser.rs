@@ -388,7 +388,7 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
                     };
                  unsafe{
                     let val = backend.get_cell_value(cell.row,cell.col);
-                    return (Function::new_sleep(val.value), true);
+                    return (Function::new_sleep((*val).value), true);
                 }
             }
         }
