@@ -14,7 +14,7 @@ use crate::structs::*;
 
 //     result
 // }
-
+#[cfg(feature = "gui")]
 pub fn parse_load_or_save_cmd(
     expression: &str,
 ) -> Option<String> {
@@ -32,7 +32,7 @@ pub fn parse_load_or_save_cmd(
 
     Some(file_name.to_string())
 }
-
+#[cfg(feature = "gui")]
 pub fn parse_sort(backend: &Backend, expression: &str) -> Result<(Cell, Cell, bool), Box<dyn std::error::Error>> {
     // println!("Parsing sort command: {}", expression);
     let start_pos = 6; // "SORTA( or SORTD("
@@ -239,7 +239,7 @@ fn parse_range_function(
     // Default return if parsing fails
     (Function::new_constant(0), false)
 }
-
+#[cfg(feature = "gui")]
 pub fn parse_autofill(
     backend: &Backend,
     expression: &str,
@@ -284,7 +284,7 @@ pub fn parse_autofill(
 
     return Err("Invalid command".to_string().into());
 }
-
+#[cfg(feature = "gui")]
 pub fn parse_cut_or_copy(backend: &Backend, expression: &str) -> Result<(Cell, Cell), Box<dyn std::error::Error>> {
     // println!("Parsing cut/copy command: {}", expression);
     let mut start_pos = 4;
@@ -321,7 +321,7 @@ pub fn parse_cut_or_copy(backend: &Backend, expression: &str) -> Result<(Cell, C
 
     Err("Invalid command".to_string().into())
 }
-
+#[cfg(feature = "gui")]
 pub fn parse_paste(backend: &Backend, expression: &str) -> Result<Cell, Box<dyn std::error::Error>> {
     // println!("Parsing paste command: {}", expression);
     let start_pos = 6; // "PASTE("

@@ -2,22 +2,32 @@ use crate::parser::*;
 use crate::structs::*;
 use std::cell::UnsafeCell;
 use std::cmp::{max, min};
-use std::collections::VecDeque;
-use std::f64;
-use std::fs::File;
-use std::io::{BufReader, BufWriter};
-use std::rc::Rc;
-use std::thread;
 use std::ptr::eq;
 use std::time::Duration;
+use std::error::Error;
+use std::thread;
+use std::f64;
+
+#[cfg(feature = "gui")]
+use std::collections::VecDeque;
+
+#[cfg(feature = "gui")]
+use std::fs::File;
+#[cfg(feature = "gui")]
+use std::io::{BufReader, BufWriter};
+use std::rc::Rc;
+
+#[cfg(feature = "gui")]
+
 
 // #[cfg(feature = "gui")]
 use csv::{ReaderBuilder, WriterBuilder, Writer};
 // use web_sys::cell_index;
 // use web_sys::HtmlTableCellElement;
 // #[cfg(feature = "gui")]
-use std::error::Error;
 
+
+#[cfg(feature = "gui")]
 fn number_to_column_header(number: usize) -> String {
     let mut num = number + 1;
     let mut result = String::new();
@@ -32,20 +42,21 @@ fn number_to_column_header(number: usize) -> String {
 #[derive(Debug)]
 pub struct Backend {
     grid: UnsafeCell<Vec<Vec<CellData>>>,
-    undo_stack: VecDeque<Vec<Vec<(CellData, String)>>>,
-    redo_stack: VecDeque<Vec<Vec<(CellData, String)>>>,
+   
     rows: usize,
     cols: usize,
 
-    // #[cfg(feature = "gui")]
+    #[cfg(feature = "gui")]
     pub formula_strings: Vec<Vec<String>>,
-    // #[cfg(feature = "gui")]
+    #[cfg(feature = "gui")]
     pub filename: String,
-    // #[cfg(feature = "gui")]
+    #[cfg(feature = "gui")]
     pub copy_stack: Vec<Vec<i32>>,
-
-    // pub undo_stack: VecDeque<Vec<Vec<i32>>>,
-    // pub redo_stack: VecDeque<Vec<Vec<i32>>>,
+     #[cfg(feature = "gui")]
+    undo_stack: VecDeque<Vec<Vec<(CellData, String)>>>,
+    #[cfg(feature = "gui")]
+    redo_stack: VecDeque<Vec<Vec<(CellData, String)>>>,
+    
 }
 
 impl Backend {
@@ -112,14 +123,17 @@ impl Backend {
 
         Backend {
             grid: UnsafeCell::new(grid),
+            #[cfg(feature = "gui")]
             undo_stack: VecDeque::with_capacity(100),
+            #[cfg(feature = "gui")]
             redo_stack: VecDeque::with_capacity(100),
             rows,
             cols,
-            // #[cfg(feature = "gui")]
+            #[cfg(feature = "gui")]
             formula_strings: vec![vec!["=0".to_string(); cols]; rows],
-            // #[cfg(feature = "gui")]
+             #[cfg(feature = "gui")]
             filename: "default.csv".to_string(),
+            #[cfg(feature = "gui")]
             copy_stack: vec![vec![0; 1]; 1],
         }
     }
@@ -177,8 +191,7 @@ impl Backend {
             // First pass: check for cycles and collect new deps to process
             let mut deps_to_check = Vec::new();
             for &dep_ptr in deps.iter() {
-               println!("dep_ptr: {:?}", dep_ptr);
-               println!("start.row,start.col: {}{}", start.row, start.col);
+             
 
                 if dep_ptr.0==start.row as i32 && dep_ptr.1==start.col as i32{ 
                     found_cycle = true;
@@ -451,7 +464,12 @@ impl Backend {
     
                 self.update_graph(&cell, &old_function);
                 self.update_dependents(&cell);
+
+                #[cfg(feature = "gui")]
+                
+               {
                 self.formula_strings[cell.row][cell.col] = "=".to_owned() + &expression.to_string();
+               } 
                 return Ok(());
             }
     
@@ -504,8 +522,11 @@ impl Backend {
             self.update_dependents(&cell);
             
         }
-        self.formula_strings[cell.row][cell.col] = expression.to_string();
-        println!("formula_strings: {:?}", self.formula_strings[cell.row][cell.col]);
+        #[cfg(feature = "gui")]
+        
+        {self.formula_strings[cell.row][cell.col] = expression.to_string();
+        }
+       
         Ok(())
     }
     
@@ -704,27 +725,27 @@ impl Backend {
             OperandData::Value(value) => Ok(value),
         }
     }
-
+   
     pub fn parse_expression(&self, expression: &str) -> (Function, bool) {
         crate::parser::parse_expression(expression, &self)
     }
-
+    #[cfg(feature = "gui")]
     pub fn parse_load_or_save_cmd(expression: &str) -> Option<String> {
         crate::parser::parse_load_or_save_cmd(expression)
     }
-
+    #[cfg(feature = "gui")]
     pub fn parse_cut_or_copy(&self, expression: &str) -> Result<(Cell, Cell), Box<dyn std::error::Error>> {
         crate::parser::parse_cut_or_copy(&self, expression)
     }
-
+    #[cfg(feature = "gui")]
     pub fn parse_paste(&self, expression: &str) -> Result<Cell, Box<dyn std::error::Error>> {
         crate::parser::parse_paste(&self, expression)
     }
-
+    #[cfg(feature = "gui")]
     pub fn parse_autofill(&self, expression: &str) -> Result<(Cell, Cell, Cell), Box<dyn std::error::Error>> {
         crate::parser::parse_autofill(&self, expression)
     }
-
+    #[cfg(feature = "gui")]
     pub fn parse_sort(&self, expression: &str) -> Result<(Cell, Cell, bool), Box<dyn std::error::Error>> {
         crate::parser::parse_sort(&self, expression)
     }
@@ -736,7 +757,7 @@ impl Backend {
     pub fn get_cols(&self) -> usize {
         self.cols
     }
-
+    #[cfg(feature = "gui")]
     pub fn sort(&mut self, expression: &str) -> Result<(), Box<dyn std::error::Error>> {
         let tup = self.parse_sort(expression);
         let (tl_cell, br_cell, a_or_d) = match tup {
@@ -756,7 +777,7 @@ impl Backend {
         });
         Ok(())
     }
-
+    #[cfg(feature = "gui")]
     pub fn undo_callback(&mut self) {
         if let Some(prev_state) = self.undo_stack.pop_back() {
             self.redo_stack.push_back(self.create_snapshot());
@@ -764,7 +785,7 @@ impl Backend {
         }
     }
 
-    //#[cfg(feature = "gui")]
+    #[cfg(feature = "gui")]
     // Redo last undone action
     pub fn redo_callback(&mut self) {
         if let Some(next_state) = self.redo_stack.pop_back() {
@@ -773,7 +794,7 @@ impl Backend {
         }
     }
 
-    //#[cfg(feature = "gui")]
+    #[cfg(feature = "gui")]
     // Helper: Create snapshot of current state
     pub fn create_snapshot(&self) -> Vec<Vec<(CellData, String)>> {
         let mut snapshot = Vec::with_capacity(self.rows);
@@ -794,7 +815,7 @@ impl Backend {
         snapshot
     }
 
-    //#[cfg(feature = "gui")]
+    #[cfg(feature = "gui")]
     // Helper: Apply state snapshot
     pub fn apply_snapshot(&mut self, snapshot: Vec<Vec<(CellData, String)>>) {
         for (row_idx, row) in snapshot.iter().enumerate() {
@@ -821,14 +842,14 @@ impl Backend {
     }
 }
 
-    //#[cfg(feature = "gui")]
+    #[cfg(feature = "gui")]
     // Helper: Clear undo/redo stacks
     pub fn clear_undo_redo(&mut self) {
         self.undo_stack.clear();
         self.redo_stack.clear();
     }
 
-    //#[cfg(feature = "gui")]
+    #[cfg(feature = "gui")]
     // Helper: Save current state to undo stack
     pub fn push_undo_state(&mut self) {
         if self.undo_stack.len() >= 100 {
@@ -836,7 +857,7 @@ impl Backend {
         }
         self.undo_stack.push_back(self.create_snapshot());
     }
-
+    #[cfg(feature = "gui")]
     pub fn autofill(&mut self, expression: &str) -> Result<(), Box<dyn std::error::Error>> {
         println!("autofill: {:?}", expression);
         let tup = self.parse_autofill(expression);
@@ -930,7 +951,7 @@ impl Backend {
             }
         }
     }
-
+    #[cfg(feature = "gui")]
     pub fn cut(&mut self, expression: &str) -> Result<(), Box<dyn std::error::Error>> {
         // println!("cut: {:?}", expression);
         let tup = self.parse_cut_or_copy(expression);
@@ -957,7 +978,7 @@ impl Backend {
         }
         Ok(())
     }
-
+    #[cfg(feature = "gui")]
     pub fn copy(&mut self, expression: &str) -> Result<(), Box<dyn std::error::Error>> {
         let tup = self.parse_cut_or_copy(expression);
         let (tl_cell, br_cell) = match tup {
@@ -977,7 +998,7 @@ impl Backend {
         self.copy_stack = copied_data;
         Ok(())
     }
-
+    #[cfg(feature = "gui")]
     pub fn paste(&mut self, expression: &str) -> Result<(), Box<dyn std::error::Error>> {
         let celll = self.parse_paste(expression);
         let tl_cell = match celll {
@@ -1011,7 +1032,7 @@ impl Backend {
         }
         Ok(())
     }
-
+    #[cfg(feature = "gui")]
     pub fn save_to_csv(&self, save_cmd: &str) -> Result<(), Box<dyn std::error::Error>> {
         let filename = match crate::backend::Backend::parse_load_or_save_cmd(save_cmd) {
             Some(path) => path,
@@ -1036,7 +1057,7 @@ impl Backend {
         wtr.flush()?;
         Ok(())
     }
-
+    #[cfg(feature = "gui")]
     pub fn load_csv(
         &mut self,
         load_cmd: &str,
@@ -1093,6 +1114,7 @@ impl Backend {
 
         Ok(())
     }
+    #[cfg(feature = "gui")]
     pub fn load_csv_string(&mut self, csv_data: &str, is_header_present: bool) -> Result<(), Box<dyn std::error::Error>> {
         let mut reader = ReaderBuilder::new()
             .has_headers(is_header_present)
@@ -1119,6 +1141,7 @@ impl Backend {
     
         Ok(())
     }
+    #[cfg(feature = "gui")]
     pub fn to_csv_string(&self) -> Result<String, Box<dyn std::error::Error>> {
         let mut writer = WriterBuilder::new().from_writer(Vec::new());
         
@@ -1134,6 +1157,7 @@ impl Backend {
         
         Ok(String::from_utf8(writer.into_inner()?)?)
     }
+    #[cfg(feature = "gui")]
     pub fn load_csv_from_str(&mut self, data: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut rdr = ReaderBuilder::new()
             .has_headers(false)
