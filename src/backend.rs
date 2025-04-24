@@ -136,9 +136,34 @@ impl Backend {
         let grid_ptr = (*self.grid.get())[row].as_mut_ptr();
         grid_ptr.add(col)
     }
+/// Resets the `dirty_parents` flag for a starting cell and all its dependent cells.
+/// 
+/// This function performs a depth-first traversal of the dependency graph starting from
+/// the given cell, resetting the `dirty_parents` flag to 0 for all reachable cells.
+/// This is typically used after dependency checking to clean up the dirty flags.
 
-   
-    /// Resets the dirty_parents flags after dependency checking
+///
+/// # Example
+///
+/// ```rust
+/// # use your_crate_name::Spreadsheet; // Replace with your actual crate name
+/// # let mut sheet = Spreadsheet::new(10, 10);
+/// // Mark some cells as having dirty parents
+/// sheet.get_cell_mut(0, 0).dirty_parents = 1;
+/// sheet.get_cell_mut(1, 1).dirty_parents = 1;
+/// 
+/// // Set up a dependency: (1,1) depends on (0,0)
+/// sheet.add_dependency(0, 0, 1, 1);
+///
+/// // Reset dirty flags starting from (0,0)
+/// unsafe { sheet.reset_found(&sheet.get_cell(0, 0)); }
+///
+/// // Verify flags were cleared
+/// assert_eq!(sheet.get_cell(0, 0).dirty_parents, 0);
+/// assert_eq!(sheet.get_cell(1, 1).dirty_parents, 0);
+/// ```
+
+    // Resets the dirty_parents flags after dependency checking
     pub fn reset_found(&mut self, start: &Cell) {
         unsafe {
             let start_cell = self.get_cell_value(start.row, start.col);
@@ -802,13 +827,7 @@ impl Backend {
                     (*cell_ptr).function = value.0.function;
                     (*cell_ptr).dirty_parents = value.0.dirty_parents;
                     self.formula_strings[row_idx][col_idx] = value.1.clone();
-                    // cell_ptr = *mut value;
-                    // cell_data.value = value.0;
-                    // cell_data.error = value.1;
-                    // cell_data.dependents = value.2.clone();
-                    // self.get_cell_value(row_idx, col_idx).value = value.0;
-                    // self.get_cell_value(row_idx, col_idx).error = value.1;
-                    // self.get_cell_value(row_idx, col_idx).dependents = value.2.clone();
+                  
                 }
             }
         }
@@ -1102,49 +1121,7 @@ impl Backend {
 
         Ok(())
     }
-    // #[cfg(feature = "gui")]
-    // pub fn load_csv_string(&mut self, csv_data: &str, is_header_present: bool) -> Result<(), Box<dyn std::error::Error>> {
-    //     let mut reader = ReaderBuilder::new()
-    //         .has_headers(is_header_present)
-    //         .from_reader(csv_data.as_bytes());
-
-    //     let mut rows: Vec<Vec<String>> = Vec::new();
-    //     for result in reader.records() {
-    //         let record = result?;
-    //         rows.push(record.iter().map(|s| s.trim().to_string()).collect());
-    //     }
-
-    //     let num_rows = rows.len();
-    //     let num_cols = rows.get(0).map_or(0, |r| r.len());
-    //     *self = Backend::new(num_rows, num_cols);
-    //     self.get_rows_col().0 = num_rows;
-    //     self.get_rows_col().1 = num_cols;
-
-    //     for (row_idx, row) in rows.iter().enumerate() {
-    //         for (col_idx, val) in row.iter().enumerate() {
-    //             let cell = Cell { row: row_idx, col: col_idx };
-    //             self.set_cell_value(cell, val);
-    //         }
-    //     }
-
-    //     Ok(())
-    // }
-    // #[cfg(feature = "gui")]
-    // pub fn to_csv_string(&self) -> Result<String, Box<dyn std::error::Error>> {
-    //     let mut writer = WriterBuilder::new().from_writer(Vec::new());
-
-    //     for row in 0..self.rows {
-    //         let mut record = Vec::new();
-    //         for col in 0..self.cols {
-    //             unsafe {
-    //                 record.push((*(self.get_cell_value(row, col))).value.to_string());
-    //             }
-    //         }
-    //         writer.write_record(&record)?;
-    //     }
-
-    //     Ok(String::from_utf8(writer.into_inner()?)?)
-    // }
+    
     #[cfg(feature = "gui")]
     /// Loads a CSV string and populates the spreadsheet with its data
     pub fn load_csv_from_str(&mut self, data: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -1184,166 +1161,6 @@ impl Backend {
 
         Ok(())
     }
-    // #[cfg(feature = "gui")]
-    // // #[server]
-    // pub fn save_to_csv_internal(&self) -> Result<(), Box<dyn Error>> {
-    //     let filename = self.filename.clone();
-    //     let mut wtr = Writer::from_path(filename)?;
-    //     let grid_ref = self.formula_strings.clone();
-    //     for row in 0..self.rows {
-    //         let mut record = Vec::new();
-    //         for col in 0..self.cols {
-    //             record.push(grid_ref[row][col].clone());
-    //         }
-    //         wtr.write_record(&record)?;
-    //     }
-    //     wtr.flush()?;
-    //     Ok(())
-    // }
-
-    // #[cfg(feature = "gui")]
-    // // #[server]
-    // pub fn save_as_internal(&mut self, filename: &str) -> Result<(), Box<dyn Error>> {
-    //     self.filename = filename.to_string();
-    //     self.save_to_csv_internal()
-    // }
+   
 }
 
-// #[cfg(feature = "gui")]
-// // Save to CSV file
-// pub fn save_to_csv(&self, filename: &str) -> Result<(), csv::Error> {
-//     let file = File::create(filename)?;
-//     let mut wtr = WriterBuilder::new().from_writer(BufWriter::new(file));
-
-//     for row in 0..self.rows {
-//         let mut record = Vec::new();
-//         for col in 0..self.cols {
-//             let cell = Cell { row, col };
-//             if let Some(cell_data) = self.get_cell_value(&cell) {
-//                 record.push(cell_data.borrow().value.to_string());
-//             } else {
-//                 record.push(String::new());
-//             }
-//         }
-//         wtr.write_record(&record)?;
-//     }
-//     wtr.flush()?;
-//     Ok(())
-// }
-
-// #[cfg(feature = "gui")]
-// // Load from CSV file
-// pub fn load_from_csv(&mut self, filename: &str) -> Result<(), csv::Error> {
-//     let file = File::open(filename)?;
-//     let mut rdr = ReaderBuilder::new()
-//         .has_headers(false)
-//         .from_reader(BufReader::new(file));
-
-//     self.clear_undo_redo();
-//     let mut new_state = self.create_snapshot();
-
-//     for (row_idx, result) in rdr.records().enumerate() {
-//         let record = result?;
-//         for (col_idx, field) in record.iter().enumerate() {
-//             if row_idx < self.rows && col_idx < self.cols {
-//                 let value = field.parse().unwrap_or(0);
-//                 new_state[row_idx][col_idx] = value;
-//             }
-//         }
-//     }
-
-//     self.push_undo_state();
-//     self.apply_snapshot(new_state);
-//     Ok(())
-// }
-
-// #[cfg(feature = "gui")]
-// // Undo last action
-// pub fn undo(&mut self) {
-//     if let Some(prev_state) = self.undo_stack.pop_back() {
-//         self.redo_stack.push_back(self.create_snapshot());
-//         self.apply_snapshot(prev_state);
-//     }
-// }
-
-// #[cfg(feature = "gui")]
-// // Redo last undone action
-// pub fn redo(&mut self) {
-//     if let Some(next_state) = self.redo_stack.pop_back() {
-//         self.undo_stack.push_back(self.create_snapshot());
-//         self.apply_snapshot(next_state);
-//     }
-// }
-
-// #[cfg(feature = "gui")]
-// // Helper: Create snapshot of current state
-// fn create_snapshot(&self) -> Vec<Vec<i32>> {
-//     let mut snapshot = Vec::with_capacity(self.rows);
-//     for row in 0..self.rows {
-//         let mut row_data = Vec::with_capacity(self.cols);
-//         for col in 0..self.cols {
-//             let cell = Cell { row, col };
-//             row_data.push(
-//                 self.get_cell_value(&cell)
-//                     .map(|c| c.borrow().value)
-//                     .unwrap_or(0),
-//             );
-//         }
-//         snapshot.push(row_data);
-//     }
-//     snapshot
-// }
-
-// #[cfg(feature = "gui")]
-// // Helper: Apply state snapshot
-// fn apply_snapshot(&mut self, snapshot: Vec<Vec<i32>>) {
-//     for (row_idx, row) in snapshot.iter().enumerate() {
-//         for (col_idx, &value) in row.iter().enumerate() {
-//             let cell = Cell {
-//                 row: row_idx,
-//                 col: col_idx,
-//             };
-//             if let Some(cell_data) = self.get_cell_value(&cell) {
-//                 cell_data.borrow_mut().value = value;
-//             }
-//         }
-//     }
-// }
-
-// #[cfg(feature = "gui")]
-// // Helper: Clear undo/redo stacks
-// fn clear_undo_redo(&mut self) {
-//     self.undo_stack.clear();
-//     self.redo_stack.clear();
-// }
-
-// #[cfg(feature = "gui")]
-// // Helper: Save current state to undo stack
-// fn push_undo_state(&mut self) {
-//     if self.undo_stack.len() >= 100 {
-//         self.undo_stack.pop_front();
-//     }
-//     self.undo_stack.push_back(self.create_snapshot());
-// }
-
-// typedef struct CellData {
-//     /**
-//      * The children
-//      */
-//     Vec dependents;
-//     /**
-//      * Cells that this cell depends on
-//      */
-//     Function function;
-//     CellError error;
-//     /**
-//      * The number of parents that need to be recalculated before this one can be
-//      */
-//     int dirty_parents;
-//     int value;
-//     /**
-//      * Useful for DFS
-//      * */
-// } CellData;
-
-// } CellData;

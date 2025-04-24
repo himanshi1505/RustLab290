@@ -3,7 +3,9 @@ name = "RustLab290"
 version = "0.1.0"
 edition = "2021"
 
-
+[[bin]]
+name="spreadsheet"
+path="src/main.rs"
 
 
 [features]
