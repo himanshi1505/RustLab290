@@ -2,13 +2,13 @@
 mod app;
 mod backend;
 mod frontend;
-mod structs;
 mod parser;
+mod structs;
 
-#[cfg(feature = "gui")]
-mod main_gui;
 #[cfg(feature = "cli")]
 mod cli;
+#[cfg(feature = "gui")]
+mod main_gui;
 
 #[cfg(feature = "gui")]
 fn main() {
@@ -19,7 +19,6 @@ fn main() {
 fn main() {
     cli::main();
 }
-
 
 //mod backend;
 //mod frontend;
@@ -43,7 +42,7 @@ fn main() {
 //                process::exit(1);
 //            }
 //        }
-//        
+//
 //        match args[2].parse::<usize>() {
 //            Ok(c) => cols = c,
 //            Err(_) => {

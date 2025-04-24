@@ -1,26 +1,14 @@
+//! # Spreadsheet Parser Module
 use crate::backend::Backend;
 use crate::structs::*;
 
-// fn convert_to_int(expression: &str) -> i32 {
-//     let mut result = 0;
 
-//     for c in expression.chars() {
-//         if c >= '0' && c <= '9' {
-//             result = result * 10 + (c as i32 - '0' as i32);
-//         } else {
-//             break;
-//         }
-//     }
-
-//     result
-// }
 #[cfg(feature = "gui")]
-pub fn parse_load_or_save_cmd(
-    expression: &str,
-) -> Option<String> {
+/// Parses a command to load or save a file.
+pub fn parse_load_or_save_cmd(expression: &str) -> Option<String> {
     let start_pos = 5; // "LOAD("
     let content = &expression[start_pos..];
-    let end_pos =  content.find(')')?;
+    let end_pos = content.find(')')?;
     let file_name = &content[..end_pos];
 
     if file_name.is_empty() {
@@ -30,7 +18,11 @@ pub fn parse_load_or_save_cmd(
     Some(file_name.to_string())
 }
 #[cfg(feature = "gui")]
-pub fn parse_sort(backend: &Backend, expression: &str) -> Result<(Cell, Cell, bool), Box<dyn std::error::Error>> {
+/// Parses a command to sort a range of cells.
+pub fn parse_sort(
+    backend: &Backend,
+    expression: &str,
+) -> Result<(Cell, Cell, bool), Box<dyn std::error::Error>> {
     // println!("Parsing sort command: {}", expression);
     let start_pos = 6; // "SORTA( or SORTD("
     let a_or_d; // true for ascending, false for descending
@@ -76,7 +68,7 @@ pub fn parse_sort(backend: &Backend, expression: &str) -> Result<(Cell, Cell, bo
 
     Err("Invalid command".to_string().into())
 }
-
+/// Parses a cell reference from a string and returns a Cell struct.
 pub fn parse_cell_reference(reference: &str, rows: usize, cols: usize) -> Option<Cell> {
     let mut cell = Cell { row: 0, col: 0 };
     let chars: Vec<char> = reference.chars().collect();
@@ -116,8 +108,13 @@ pub fn parse_cell_reference(reference: &str, rows: usize, cols: usize) -> Option
 
     Some(cell)
 }
-
-pub fn parse_binary_op(operand1: &str, operand2: &str, backend: &Backend, success: &mut bool) -> BinaryOp {
+//// Parses a binary operation from two operands and returns a BinaryOp struct.
+pub fn parse_binary_op(
+    operand1: &str,
+    operand2: &str,
+    backend: &Backend,
+    success: &mut bool,
+) -> BinaryOp {
     *success = true;
     // Operand 1 processing
     let first = if operand1.chars().next().is_some_and(|c| c.is_ascii_digit()) {
@@ -148,7 +145,7 @@ pub fn parse_binary_op(operand1: &str, operand2: &str, backend: &Backend, succes
                     type_: OperandType::Int,
                     data: OperandData::Value(0),
                 }
-            },
+            }
         }
     };
 
@@ -178,16 +175,16 @@ pub fn parse_binary_op(operand1: &str, operand2: &str, backend: &Backend, succes
             None => {
                 *success = false;
                 Operand {
-                type_: OperandType::Int,
-                data: OperandData::Value(0),
+                    type_: OperandType::Int,
+                    data: OperandData::Value(0),
+                }
             }
-        },
         }
     };
 
     BinaryOp { first, second }
 }
-
+/// Parses a range function (MIN, MAX, AVG, SUM, STDEV) from a string and returns a Function struct.
 fn parse_range_function(
     expression: &str,
     function_type: FunctionType,
@@ -237,6 +234,7 @@ fn parse_range_function(
     (Function::new_constant(0), false)
 }
 #[cfg(feature = "gui")]
+/// Parses an autofill command from a string and returns the start, end, and destination cells.
 pub fn parse_autofill(
     backend: &Backend,
     expression: &str,
@@ -277,12 +275,16 @@ pub fn parse_autofill(
                 return Ok((start_cell, end_cell, dest_cell));
             }
         }
-    }  
+    }
 
-     Err("Invalid command".to_string().into())
+    Err("Invalid command".to_string().into())
 }
 #[cfg(feature = "gui")]
-pub fn parse_cut_or_copy(backend: &Backend, expression: &str) -> Result<(Cell, Cell), Box<dyn std::error::Error>> {
+/// Parses a cut or copy command from a string and returns the start and end cells.
+pub fn parse_cut_or_copy(
+    backend: &Backend,
+    expression: &str,
+) -> Result<(Cell, Cell), Box<dyn std::error::Error>> {
     // println!("Parsing cut/copy command: {}", expression);
     let mut start_pos = 4;
     if expression.starts_with("copy(") {
@@ -305,7 +307,8 @@ pub fn parse_cut_or_copy(backend: &Backend, expression: &str) -> Result<(Cell, C
             Some(cell) => cell,
             None => return Err("Invalid cell reference".to_string().into()),
         };
-        let bottom_right = parse_cell_reference(bottom_right_str, backend.get_rows(), backend.get_cols());
+        let bottom_right =
+            parse_cell_reference(bottom_right_str, backend.get_rows(), backend.get_cols());
         let bottom_right_cell = match bottom_right {
             Some(cell) => cell,
             None => return Err("Invalid cell reference".to_string().into()),
@@ -319,7 +322,11 @@ pub fn parse_cut_or_copy(backend: &Backend, expression: &str) -> Result<(Cell, C
     Err("Invalid command".to_string().into())
 }
 #[cfg(feature = "gui")]
-pub fn parse_paste(backend: &Backend, expression: &str) -> Result<Cell, Box<dyn std::error::Error>> {
+/// Parses a paste command from a string and returns the destination cell.
+pub fn parse_paste(
+    backend: &Backend,
+    expression: &str,
+) -> Result<Cell, Box<dyn std::error::Error>> {
     // println!("Parsing paste command: {}", expression);
     let start_pos = 6; // "PASTE("
     let content = &expression[start_pos..];
@@ -329,15 +336,13 @@ pub fn parse_paste(backend: &Backend, expression: &str) -> Result<Cell, Box<dyn 
     };
     let cell_str = &content[..end_pos];
     let cell = parse_cell_reference(cell_str, backend.get_rows(), backend.get_cols());
-     match cell {
+    match cell {
         Some(cell) => Ok(cell),
-        None =>  Err("Invalid cell reference".to_string().into()),
+        None => Err("Invalid cell reference".to_string().into()),
     }
     // println!("Parsed cell: {:?}", cell);
-    
 }
-
-//success param was not being used so removed it
+/// Parses a function from a string and returns a Function struct.
 pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool) {
     let mut success = false;
     // Check if it's possible to be a parenthesis function (>=4 is the size)
@@ -383,8 +388,8 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
                         Some(cell) => cell,
                         None => return (Function::new_constant(0), false),
                     };
-                 unsafe{
-                    let val = backend.get_cell_value(cell.row,cell.col);
+                unsafe {
+                    let val = backend.get_cell_value(cell.row, cell.col);
                     return (Function::new_sleep((*val).value), true);
                 }
             }
@@ -409,7 +414,7 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
         let operand1 = &expression[..i];
         let operand2 = &expression[i + 1..];
 
-         let binary_op = parse_binary_op(operand1, operand2, backend, &mut success);
+        let binary_op = parse_binary_op(operand1, operand2, backend, &mut success);
         if !success {
             return (Function::new_constant(0), false);
         }

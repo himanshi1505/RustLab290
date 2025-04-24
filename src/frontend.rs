@@ -1,22 +1,22 @@
+//! # Spreadsheet Frontend Module
 #[cfg(feature = "cli")]
 use crate::backend::*;
 
 use crate::parser::*;
 use crate::structs::*;
-// use std::arch::x86_64::_CMP_UNORD_Q;
+
 #[cfg(feature = "cli")]
 use std::cmp::min;
 #[cfg(feature = "cli")]
 use std::io::{self, Write};
 #[cfg(feature = "cli")]
 use std::time::Instant;
-//#[cfg(feature = "gui")]
-//use std::cell::RefCell;
+
 #[cfg(feature = "gui")]
 use crate::backend::Backend;
 
 const MAX_WIDTH: usize = 10;
-
+/// Represents the frontend of the spreadsheet application, handling user input and output.
 pub struct Frontend {
     backend: Backend,
     rows: usize,
@@ -26,17 +26,20 @@ pub struct Frontend {
     do_print: bool,
     top_left: Cell,
 }
-
+/// PartialEq implementation for Frontend, used for GUI comparisons.
 #[cfg(feature = "gui")]
 impl PartialEq for Frontend {
     fn eq(&self, other: &Self) -> bool {
         self.rows == other.rows && self.cols == other.cols
     }
 }
+/// Implements the Frontend struct, which manages the spreadsheet interface.
+/// This struct is responsible for user interactions, including command parsing and output formatting.
 impl Frontend {
+    /// Creates a new Frontend instance.
     pub fn new(rows: usize, cols: usize) -> Self {
         let backend = Backend::new(rows, cols);
-      
+
         Self {
             backend,
             rows,
@@ -47,11 +50,12 @@ impl Frontend {
             top_left: Cell { row: 0, col: 0 },
         }
     }
-
+    /// Returns mutable access to the backend.
     #[cfg(feature = "gui")]
     pub fn get_backend_mut(&mut self) -> &mut Backend {
         &mut self.backend
     }
+    /// Converts a column number to a letter-based column header (A, B, ..., Z, AA, ...).
     #[cfg(feature = "cli")]
     fn number_to_column_header(number: usize) -> String {
         let mut num = number + 1;
@@ -63,6 +67,7 @@ impl Frontend {
         }
         result
     }
+    /// Prints the current visible portion of the spreadsheet.
     #[cfg(feature = "cli")]
     pub fn print_board(&self) {
         if !self.do_print {
@@ -70,7 +75,7 @@ impl Frontend {
         }
         let row_width = min(MAX_WIDTH, self.rows - self.top_left.row);
         let col_width = min(MAX_WIDTH, self.cols - self.top_left.col);
-        
+
         print!("{:<width$}", "", width = self.cell_width);
         for col in self.top_left.col..(self.top_left.col + col_width) {
             print!(
@@ -84,27 +89,25 @@ impl Frontend {
         for row in self.top_left.row..(self.top_left.row + row_width) {
             print!("{:<width$}", row + 1, width = self.cell_width);
             for col in self.top_left.col..(self.top_left.col + col_width) {
-               
-                unsafe{let data = self.backend.get_cell_value(row,col);
-           
-                       
-                        // println!("data.error: {:?}", data.error);
-                        match (*data).error {
-                            CellError::NoError => {
-                                print!("{:<width$}", (*data).value, width = self.cell_width);
-                            }
-                            _ => {
-                                // println!("in printing ERR");
-                                print!("{:<width$}", "ERR", width = self.cell_width);
-                            }
+                unsafe {
+                    let data = self.backend.get_cell_value(row, col);
+
+                    // println!("data.error: {:?}", data.error);
+                    match (*data).error {
+                        CellError::NoError => {
+                            print!("{:<width$}", (*data).value, width = self.cell_width);
                         }
-                    
-                    } 
-                
+                        _ => {
+                            // println!("in printing ERR");
+                            print!("{:<width$}", "ERR", width = self.cell_width);
+                        }
+                    }
+                }
             }
             println!();
         }
     }
+    /// Removes extra spaces from a string.
     #[cfg(feature = "cli")]
     fn remove_spaces(s: &mut String) {
         let mut cleaned = String::new();
@@ -129,7 +132,9 @@ impl Frontend {
         }
         *s = cleaned;
     }
-
+    /// Handles frontend commands like navigation, some gui extensions and output control.
+    /// This function interprets commands entered by the user and performs the corresponding actions.
+    /// It supports commands for scrolling, loading, saving, copying, cutting, pasting, and autofilling.
     fn run_frontend_command(&mut self, cmd: &str) -> bool {
         match cmd {
             "disable_output" => self.do_print = false,
@@ -176,17 +181,20 @@ impl Frontend {
                 let (rows, cols) = self.backend.get_rows_col();
                 if let Some(cell) = parse_cell_reference(cell_str, rows, cols) {
                     self.top_left = cell;
-                } 
-                else {
+                } else {
                     return false;
                 }
-            } 
+            }
             #[cfg(feature = "gui")]
             cmd if cmd.starts_with("load(") => {
                 let res = Backend::load_csv(&mut self.backend, cmd, false);
                 match res {
-                    Ok(_) => {return true;}
-                    Err(_) => {return false;}
+                    Ok(_) => {
+                        return true;
+                    }
+                    Err(_) => {
+                        return false;
+                    }
                 }
             }
             #[cfg(feature = "gui")]
@@ -194,8 +202,12 @@ impl Frontend {
                 println!("save");
                 let res = Backend::save_to_csv(&self.backend, cmd);
                 match res {
-                    Ok(_) => {return true;}
-                    Err(_) => {return false;}
+                    Ok(_) => {
+                        return true;
+                    }
+                    Err(_) => {
+                        return false;
+                    }
                 }
             }
             #[cfg(feature = "gui")]
@@ -204,8 +216,12 @@ impl Frontend {
                 println!("copy");
                 let res = Backend::copy(&mut self.backend, cmd);
                 match res {
-                    Ok(_) => {return true;}
-                    Err(_) => {return false;}
+                    Ok(_) => {
+                        return true;
+                    }
+                    Err(_) => {
+                        return false;
+                    }
                 }
             }
             #[cfg(feature = "gui")]
@@ -213,8 +229,12 @@ impl Frontend {
                 self.backend.push_undo_state();
                 let res = Backend::cut(&mut self.backend, cmd);
                 match res {
-                    Ok(_) => {return true;}
-                    Err(_) => {return false;}
+                    Ok(_) => {
+                        return true;
+                    }
+                    Err(_) => {
+                        return false;
+                    }
                 }
             }
             #[cfg(feature = "gui")]
@@ -222,8 +242,12 @@ impl Frontend {
                 self.backend.push_undo_state();
                 let res = Backend::paste(&mut self.backend, cmd);
                 match res {
-                    Ok(_) => {return true;}
-                    Err(_) => {return false;}
+                    Ok(_) => {
+                        return true;
+                    }
+                    Err(_) => {
+                        return false;
+                    }
                 }
             }
             #[cfg(feature = "gui")]
@@ -231,8 +255,12 @@ impl Frontend {
                 self.backend.push_undo_state();
                 let res = Backend::autofill(&mut self.backend, cmd);
                 match res {
-                    Ok(_) => {return true;}
-                    Err(_) => {return false;}
+                    Ok(_) => {
+                        return true;
+                    }
+                    Err(_) => {
+                        return false;
+                    }
                 }
             }
             #[cfg(feature = "gui")]
@@ -241,15 +269,19 @@ impl Frontend {
                 self.backend.push_undo_state();
                 let res = Backend::sort(&mut self.backend, cmd);
                 match res {
-                    Ok(_) => {return true;}
-                    Err(_) => {return false;}
+                    Ok(_) => {
+                        return true;
+                    }
+                    Err(_) => {
+                        return false;
+                    }
                 }
             }
             _ => return false,
         }
         true
     }
-
+    /// Runs a command entered by the user.
     pub fn run_command(&mut self, input: &str) -> bool {
         if input
             .chars()
@@ -269,16 +301,15 @@ impl Frontend {
                     let row_num = cell.row;
                     #[cfg(feature = "gui")]
                     let col_num = cell.col;
-                    
-                    
+
                     let expr = &expr_str[1..]; // skip '='
 
                     match self.backend.set_cell_value(cell, expr) {
                         Ok(_) => {
                             #[cfg(feature = "gui")]
-                            
                             {
-                                self.backend.formula_strings[row_num][col_num] = expr_str.to_string();
+                                self.backend.formula_strings[row_num][col_num] =
+                                    expr_str.to_string();
                             }
                             true
                         }
@@ -294,6 +325,7 @@ impl Frontend {
             self.run_frontend_command(input)
         }
     }
+    /// Runs the command line interface for the spreadsheet.
     #[cfg(feature = "cli")]
     pub fn run(&mut self) {
         let mut status = "ok";

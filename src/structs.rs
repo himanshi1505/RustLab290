@@ -1,80 +1,61 @@
-
+//! # Spreadsheet Structs Module
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Represents a cell in a spreadsheet with row and column indices.
 pub struct Cell {
     pub row: usize,
     pub col: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// CellError represents the possible errors that can occur in a cell.
 pub enum CellError {
     NoError,
     DivideByZero,
     DependencyError, // depends on cell which has div by zero
 }
-
+/// Represents the possible errors that can occur during expression parsing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExpressionError {
     CouldNotParse,
     CircularDependency,
-    
 }
 
-//checked
 
+///Represents possible operand types: Cell or Int.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OperandType {
     Cell,
     Int,
 }
-//checked
 
+/// OperandData represents the data contained in an operand, which can be either a Cell or an integer value.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OperandData {
     Cell(Cell),
     Value(i32),
 }
-//checked
+/// Operand represents a single operand in an expression, stores it type and data.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Operand {
     pub type_: OperandType,
     pub data: OperandData,
 }
-//checked
-
-// impl Operand {
-//     pub fn new_cell(cell: Cell) -> Self {
-//         Operand {
-//             type_: OperandType::Cell,
-//             cell: Some(cell),
-//             value: None,
-//         }
-//     }
-
-//     pub fn new_int(value: i32) -> Self {
-//         Operand {
-//             type_: OperandType::Int,
-//             cell: None,
-//             value: Some(value),
-//         }
-//     }
-// }
-//not currently required
-
+/// BinaryOp represents a binary operation between two operands and stores them.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BinaryOp {
     pub first: Operand,
     pub second: Operand,
 }
-//checked
 
+/// RangeFunction represents a range of cells in a spreadsheet, defined by its top-left and bottom-right corners.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RangeFunction {
     pub top_left: Cell,
     pub bottom_right: Cell,
 }
-//checked
 
+/// FunctionType represents the type of function being used in a cell, such as Min, Max, Avg, etc.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FunctionType {
     Constant,
@@ -89,7 +70,7 @@ pub enum FunctionType {
     Multiply,
     Divide,
 }
-//checked
+/// FunctionData represents the data associated with a function, which can be a range of cells, a binary operation, sleep value or a constant value.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FunctionData {
@@ -105,16 +86,16 @@ pub enum FunctionData {
     /// Used for Constant
     Value(i32),
 }
-
+/// Function represents a function in a cell, stores its type and data.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Function {
     pub type_: FunctionType,
     pub data: FunctionData,
 }
-//checked
 
+/// Function methods
 impl Function {
-    //what to do when it matches with none
+    ///Creates a new range Function instance with the given type and data.
     pub fn new_range_function(type_: FunctionType, range: RangeFunction) -> Self {
         assert!(matches!(
             type_,
@@ -130,7 +111,7 @@ impl Function {
             data: FunctionData::RangeFunction(range),
         }
     }
-
+     ///Creates a new binary Function instance with the given type and data.
     pub fn new_binary_op(type_: FunctionType, op: BinaryOp) -> Self {
         assert!(matches!(
             type_,
@@ -145,14 +126,14 @@ impl Function {
             data: FunctionData::BinaryOp(op),
         }
     }
-
+    /// Creates a new constant Function instance with the given type and data.
     pub fn new_constant(value: i32) -> Self {
         Function {
             type_: FunctionType::Constant,
             data: FunctionData::Value(value),
         }
     }
-
+    /// Creates a new sleep Function instance with the given type and data.
     pub fn new_sleep(value: i32) -> Self {
         Function {
             type_: FunctionType::Sleep,
@@ -163,17 +144,18 @@ impl Function {
         }
     }
 }
-
-#[derive(Debug,Clone)]
+/// CellData represents the data associated with a cell in a spreadsheet, including its value, dependents, function, error state, and dirty parents count.
+#[derive(Debug, Clone)]
 pub struct CellData {
     pub value: i32,
-    pub dependents: Vec<(i32,i32)>,
+    pub dependents: Vec<(i32, i32)>,
     pub function: Function,
     pub error: CellError,
     pub dirty_parents: i32,
 }
-
+/// CellData methods
 impl Default for CellData {
+    /// Creates a new CellData instance with default values.
     fn default() -> Self {
         CellData {
             value: 0,

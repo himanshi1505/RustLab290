@@ -1,36 +1,32 @@
+//! # Spreadsheet App(GUI) Module
 use yew::prelude::*;
 //use std::collections::VecDeque;
 //use std::cell::UnsafeCell;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 use web_sys::FileReader;
-
-
-use wasm_bindgen::JsValue;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::JsValue;
 //use gloo::file::callbacks::read_as_text;
-
 
 //use gloo::file::File;
 use gloo::utils::window;
 
-
-
 //use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, HtmlInputElement, Event, ProgressEvent, Url};
-use web_sys::{Blob, BlobPropertyBag, HtmlInputElement, Event, ProgressEvent, Url};
+use web_sys::{Blob, BlobPropertyBag, Event, HtmlInputElement, ProgressEvent, Url};
 //use crate::backend::Backend;
 use crate::frontend::Frontend;
 //use crate::structs::{Cell, Operand, OperandType, OperandData, CellData, Function, CellError};
 use crate::structs::CellError;
-// Added ThemeType enum to track current theme
+/// ThemeType enum to track current theme
 #[derive(Clone, PartialEq)]
 pub enum ThemeType {
     Light,
     Dark,
 }
 
-// Define color constants for both themes
+/// Define color constants for both themes
 struct ThemeColors {
     background: &'static str,
     text: &'static str,
@@ -42,7 +38,7 @@ struct ThemeColors {
     parent_cell_bg: &'static str,
     child_cell_bg: &'static str,
 }
-
+//// Implement methods to get colors based on the theme
 impl ThemeColors {
     fn light() -> Self {
         Self {
@@ -81,6 +77,8 @@ impl ThemeColors {
 }
 
 #[derive(Properties, PartialEq)]
+/// Props for the Grid component
+/// This component is responsible for displaying the grid of cells.
 pub struct GridProps {
     pub frontend: UseStateHandle<Rc<RefCell<Frontend>>>,
     pub update_trigger: UseStateHandle<i32>,
@@ -89,22 +87,25 @@ pub struct GridProps {
     pub cols: usize,
     pub theme: ThemeType, // Add theme prop
 }
-
+/// Props for the Formula Bar component
+/// This component is responsible for displaying the formula of the selected cell.
 #[derive(Properties, PartialEq)]
 pub struct FormulaBarProps {
     pub frontend: UseStateHandle<Rc<RefCell<Frontend>>>,
     pub selected_cell: UseStateHandle<(usize, usize)>,
     pub theme: ThemeType, // Add theme prop
 }
-
+/// Props for the Command Bar component
+/// This component is responsible for executing commands and displaying status messages.
+/// It includes an input field for entering commands and a status message area.
 #[derive(Properties, PartialEq)]
 pub struct CommandBarProps {
     pub frontend: UseStateHandle<Rc<RefCell<Frontend>>>,
     pub update_trigger: UseStateHandle<i32>,
     pub theme: ThemeType, // Add theme prop
 }
-
-
+/// Props for the Tab Bar component
+/// This component is responsible for displaying the tab bar with buttons for saving, loading, undoing, and redoing actions.
 #[derive(Properties, PartialEq)]
 pub struct TabBarProps {
     pub frontend: UseStateHandle<Rc<RefCell<Frontend>>>,
@@ -113,19 +114,20 @@ pub struct TabBarProps {
     pub cols: usize,
     pub theme: UseStateHandle<ThemeType>, // Use UseStateHandle for theme
 }
-
+/// Main App component
+/// This component is responsible for rendering the entire application.
 #[function_component(App)]
 pub fn app() -> Html {
-    let rows = 100;  // Large number of rows for scrolling
-    let cols = 50;   // Large number of columns for scrolling
+    let rows = 100; // Large number of rows for scrolling
+    let cols = 50; // Large number of columns for scrolling
     let frontend = use_state(|| Rc::new(RefCell::new(Frontend::new(rows, cols))));
     let update_trigger = use_state(|| 0);
     let selected_cell = use_state(|| (0, 0));
     let theme = use_state(|| ThemeType::Light); // Initialize with light theme
-    
+
     // Get theme colors
     let colors = ThemeColors::get(&theme);
-    
+
     html! {
         <div style={format!("
             display: flex; 
@@ -135,14 +137,14 @@ pub fn app() -> Html {
             background-color: {};
             color: {};
         ", colors.background, colors.text)}>
-            <TabBar 
-                frontend={frontend.clone()} 
+            <TabBar
+                frontend={frontend.clone()}
                 update_trigger={update_trigger.clone()}
                 rows={rows}
                 cols={cols}
                 theme={theme.clone()}
             />
-            <FormulaBar 
+            <FormulaBar
                 frontend={frontend.clone()}
                 selected_cell={selected_cell.clone()}
                 theme={(*theme).clone()}
@@ -152,8 +154,8 @@ pub fn app() -> Html {
                 overflow: auto;
                 position: relative;
             ">
-                <Grid 
-                    frontend={frontend.clone()} 
+                <Grid
+                    frontend={frontend.clone()}
                     update_trigger={update_trigger.clone()}
                     selected_cell={selected_cell.clone()}
                     rows={rows}
@@ -161,15 +163,19 @@ pub fn app() -> Html {
                     theme={(*theme).clone()}
                 />
             </div>
-            <CommandBar 
-                frontend={frontend.clone()} 
+            <CommandBar
+                frontend={frontend.clone()}
                 update_trigger={update_trigger.clone()}
                 theme={(*theme).clone()}
             />
         </div>
     }
 }
-
+/// Grid component
+/// This component is responsible for rendering the grid of cells.
+/// It displays the cell values and allows for interaction with the cells.
+/// It also handles the display of parent and child cells based on the selected cell.
+/// It uses the `use_state` hook to manage the selected cell and update the triggers.
 #[function_component(Grid)]
 pub fn grid(props: &GridProps) -> Html {
     let _ = &props.update_trigger; // track changes
@@ -177,38 +183,40 @@ pub fn grid(props: &GridProps) -> Html {
     let mut frontend = frontend.borrow_mut();
     let selected_cell = props.selected_cell.clone();
     let backend = frontend.get_backend_mut();
-    
+
     // Get theme colors
     let colors = ThemeColors::get(&props.theme);
-    
+
     // Fixed dimensions - set width to accommodate "WWW" comfortably
-    const CELL_WIDTH: &str = "80px";  // Wide enough for "WWW"
+    const CELL_WIDTH: &str = "80px"; // Wide enough for "WWW"
     const CELL_HEIGHT: &str = "24px";
-    
+
     // Get the current relationships for the selected cell using backend function
     let (parent_cells, child_cells) = {
         let (row, col) = *selected_cell;
         backend.get_cell_dependencies(row, col)
     };
-    
+
     // Function to convert column index to letter (0 -> A, 1 -> B, etc.)
     fn col_to_letter(col: usize) -> String {
         let mut result = String::new();
         let mut n = col as i32;
         while n >= 0 {
             result.insert(0, (b'A' + (n % 26) as u8) as char);
-            if n < 26 { break; }
+            if n < 26 {
+                break;
+            }
             n = n / 26 - 1;
         }
         result
     }
-    
-    // Function to determine cell background color based on relationships
+
+    /// Function to determine cell background color based on relationships
     fn get_cell_background_color(
-        row: usize, 
-        col: usize, 
-        selected: (usize, usize), 
-        parents: &[(usize, usize)], 
+        row: usize,
+        col: usize,
+        selected: (usize, usize),
+        parents: &[(usize, usize)],
         children: &[(usize, usize)],
         colors: &ThemeColors,
     ) -> &'static str {
@@ -222,7 +230,7 @@ pub fn grid(props: &GridProps) -> Html {
             colors.cell_bg
         }
     }
-    
+
     html! {
         <div style="overflow: auto; height: 100%; width: 100%;">
             <table style={format!(
@@ -245,7 +253,7 @@ pub fn grid(props: &GridProps) -> Html {
                         {(0..props.cols).map(|col| {
                             let letter = col_to_letter(col);
                             html! {
-                                <th 
+                                <th
                                     key={format!("col-{}", col)}
                                     style={format!("
                                         width: {CELL_WIDTH};
@@ -286,7 +294,7 @@ pub fn grid(props: &GridProps) -> Html {
                                 </td>
                                 {(0..props.cols).map(|col| {
                                     let key = format!("{}-{}", row, col);
-                                    let celldata = unsafe { 
+                                    let celldata = unsafe {
                                         backend.get_cell_value(row, col)
                                     };
                                      let val = unsafe{if (*celldata).error == CellError::NoError {
@@ -295,20 +303,20 @@ pub fn grid(props: &GridProps) -> Html {
                                             "ERR".to_string()
                                         }
                                     };
-                                    // let val = unsafe { 
+                                    // let val = unsafe {
                                     //     backend.get_cell_value(row, col).value.to_string()
                                     // };
-                                    
+
                                     // Get background color based on relationships
                                     let bg_color = get_cell_background_color(
-                                        row, 
-                                        col, 
-                                        *selected_cell, 
-                                        &parent_cells, 
+                                        row,
+                                        col,
+                                        *selected_cell,
+                                        &parent_cells,
                                         &child_cells,
                                         &colors,
                                     );
-                                    
+
                                     let cell_style = format!("
                                         width: {CELL_WIDTH};
                                         height: {CELL_HEIGHT};
@@ -331,7 +339,7 @@ pub fn grid(props: &GridProps) -> Html {
                                     };
 
                                     html! {
-                                        <td 
+                                        <td
                                             key={key}
                                             style={cell_style}
                                             {onclick}
@@ -348,16 +356,18 @@ pub fn grid(props: &GridProps) -> Html {
         </div>
     }
 }
+///  Formula Bar component
+/// This component is responsible for displaying the formula of the selected cell.
 
 #[function_component(FormulaBar)]
 pub fn formula_bar(props: &FormulaBarProps) -> Html {
     let frontend = props.frontend.clone();
     let mut frontend = frontend.borrow_mut();
     let selected_cell = props.selected_cell.clone();
-    
+
     // Get theme colors
     let colors = ThemeColors::get(&props.theme);
-    
+
     // Get the formula for the selected cell
     let formula = {
         let backend = frontend.get_backend_mut();
@@ -366,20 +376,22 @@ pub fn formula_bar(props: &FormulaBarProps) -> Html {
     };
 
     html! {
-        <div style={format!("padding: 10px; border-bottom: 1px solid {}; background-color: {}", 
+        <div style={format!("padding: 10px; border-bottom: 1px solid {}; background-color: {}",
                 colors.border, colors.background)}>
-            <input 
-                type="text" 
-                placeholder="=SUM(A1:A5)" 
-                style={format!("width: 100%; background-color: {}; color: {}; border: 1px solid {}", 
-                    colors.background, colors.text, colors.border)} 
+            <input
+                type="text"
+                placeholder="=SUM(A1:A5)"
+                style={format!("width: 100%; background-color: {}; color: {}; border: 1px solid {}",
+                    colors.background, colors.text, colors.border)}
                 value={formula}
                 readonly=true
             />
         </div>
     }
 }
-
+/// Command Bar component
+/// This component is responsible for executing commands and displaying status messages.
+/// It includes an input field for entering commands and a status(ok and error) message area.
 #[function_component(CommandBar)]
 pub fn command_bar(props: &CommandBarProps) -> Html {
     //let input_value = use_state(|| String::new());
@@ -432,20 +444,24 @@ pub fn command_bar(props: &CommandBarProps) -> Html {
     };
 
     let status_display = match *status {
-        Some(true) => html! { <span style="color: green; margin-right: 10px; min-width: 40px;">{ "OK" }</span> },
-        Some(false) => html! { <span style="color: red; margin-right: 10px; min-width: 40px;">{ "Error" }</span> },
+        Some(true) => {
+            html! { <span style="color: green; margin-right: 10px; min-width: 40px;">{ "OK" }</span> }
+        }
+        Some(false) => {
+            html! { <span style="color: red; margin-right: 10px; min-width: 40px;">{ "Error" }</span> }
+        }
         None => html! { <span style="margin-right: 10px; min-width: 40px;"></span> },
     };
 
     html! {
-        <div style={format!("padding: 10px; background-color: {}; display: flex; align-items: center;", 
+        <div style={format!("padding: 10px; background-color: {}; display: flex; align-items: center;",
                 colors.command_bar_bg)}>
             { status_display }
-            <input 
+            <input
                 ref={input_ref}
-                type="text" 
-                placeholder="Enter command here..." 
-                style={format!("width: 100%; background-color: {}; color: {}; border: 1px solid {}", 
+                type="text"
+                placeholder="Enter command here..."
+                style={format!("width: 100%; background-color: {}; color: {}; border: 1px solid {}",
                     colors.cell_bg, colors.text, colors.border)}
                 value={(*input_value).clone()}
                 {oninput}
@@ -454,7 +470,8 @@ pub fn command_bar(props: &CommandBarProps) -> Html {
         </div>
     }
 }
-
+/// Function to download CSV file
+/// This function creates a Blob from the CSV content and triggers a download in the browser.
 pub fn download_csv(content: String, filename: &str) {
     let array = js_sys::Array::new();
     array.push(&JsValue::from_str(&content));
@@ -463,32 +480,39 @@ pub fn download_csv(content: String, filename: &str) {
         let options = BlobPropertyBag::new();
         options.set_type("text/csv");
         Blob::new_with_str_sequence_and_options(&array, &options)
-    }.unwrap();
+    }
+    .unwrap();
 
     let url = Url::create_object_url_with_blob(&blob).unwrap();
 
     let document = window().document().unwrap();
-    let a = document.create_element("a").unwrap().dyn_into::<web_sys::HtmlAnchorElement>().unwrap();
+    let a = document
+        .create_element("a")
+        .unwrap()
+        .dyn_into::<web_sys::HtmlAnchorElement>()
+        .unwrap();
     a.set_href(&url);
     a.set_download(filename);
     a.click();
     Url::revoke_object_url(&url).unwrap();
 }
-
+//// Tab Bar component
+/// This component is responsible for displaying the tab bar with buttons for saving, loading, undoing, and redoing actions.
+/// It also includes theme toggle buttons for light and dark themes.
 #[function_component(TabBar)]
 pub fn tab_bar(props: &TabBarProps) -> Html {
     let frontend = props.frontend.clone();
     let update_trigger = props.update_trigger.clone();
-   // let status_message = use_state(|| String::new());
+    // let status_message = use_state(|| String::new());
     let status_message = use_state(String::new);
     let file_input_ref = use_node_ref();
     let rows = props.rows;
     let cols = props.cols;
     let theme = props.theme.clone();
-    
+
     // Get theme colors
     let colors = ThemeColors::get(&theme);
-    
+
     // Theme toggle buttons
     let light_theme_onclick = {
         let theme = theme.clone();
@@ -496,60 +520,62 @@ pub fn tab_bar(props: &TabBarProps) -> Html {
             theme.set(ThemeType::Light);
         })
     };
-    
+
     let dark_theme_onclick = {
         let theme = theme.clone();
         Callback::from(move |_| {
             theme.set(ThemeType::Dark);
         })
     };
-    
+
     //Undo and Redo functionality
     let undo_onclick = {
         let frontend = frontend.clone();
         let status_message = status_message.clone();
-        
+
         Callback::from(move |_: MouseEvent| {
             let mut frontend = frontend.borrow_mut();
             let backend = frontend.get_backend_mut();
             backend.undo_callback();
             status_message.set("Undo successful".to_string());
-            
+
             // Clear message after 3 seconds
             let status_message = status_message.clone();
             gloo::timers::callback::Timeout::new(3000, move || {
                 status_message.set(String::new());
-            }).forget();
+            })
+            .forget();
         })
     };
-    
+
     let redo_onclick = {
         let frontend = frontend.clone();
         let status_message = status_message.clone();
-        
+
         Callback::from(move |_: MouseEvent| {
             let mut frontend = frontend.borrow_mut();
             let backend = frontend.get_backend_mut();
             backend.redo_callback();
             status_message.set("Redo successful".to_string());
-            
+
             // Clear message after 3 seconds
             let status_message = status_message.clone();
             gloo::timers::callback::Timeout::new(3000, move || {
                 status_message.set(String::new());
-            }).forget();
+            })
+            .forget();
         })
     };
-    
+
     // Save functionality
     let save_onclick = {
         let frontend = frontend.clone();
         let status_message = status_message.clone();
-        
+
         Callback::from(move |_| {
             let mut frontend = frontend.borrow_mut();
             let backend = frontend.get_backend_mut();
-            
+
             // Generate CSV content
             let mut csv = String::new();
             for row in 0..rows {
@@ -568,19 +594,20 @@ pub fn tab_bar(props: &TabBarProps) -> Html {
                 csv.push_str(&line.join(","));
                 csv.push('\n');
             }
-            
+
             // Trigger download
             download_csv(csv, "spreadsheet.csv");
             status_message.set("File saved successfully".to_string());
-            
+
             // Clear message after 3 seconds
             let status_message = status_message.clone();
             gloo::timers::callback::Timeout::new(3000, move || {
                 status_message.set(String::new());
-            }).forget();
+            })
+            .forget();
         })
     };
-    
+
     // Load functionality
     let load_onclick = {
         let file_input_ref = file_input_ref.clone();
@@ -590,23 +617,23 @@ pub fn tab_bar(props: &TabBarProps) -> Html {
             }
         })
     };
-    
+
     let on_file_change = {
         let frontend = frontend.clone();
         let update_trigger = update_trigger.clone();
         let status_message = status_message.clone();
-    
+
         Callback::from(move |e: Event| {
             let input: HtmlInputElement = e.target_unchecked_into();
             if let Some(file_list) = input.files() {
                 if file_list.length() > 0 {
                     let file = file_list.get(0).unwrap();
                     let reader = FileReader::new().unwrap();
-    
+
                     let frontend = frontend.clone();
                     let update_trigger = update_trigger.clone();
                     let status_message = status_message.clone();
-    
+
                     // Clone the `reader` to avoid moving it
                     let reader_clone = reader.clone();
                     let onload = Closure::wrap(Box::new(move |_e: ProgressEvent| {
@@ -614,7 +641,7 @@ pub fn tab_bar(props: &TabBarProps) -> Html {
                             if let Some(text) = result.as_string() {
                                 let mut frontend = frontend.borrow_mut();
                                 let backend = frontend.get_backend_mut();
-    
+
                                 match backend.load_csv_from_str(&text) {
                                     Ok(_) => {
                                         status_message.set("File loaded successfully".to_string());
@@ -624,7 +651,7 @@ pub fn tab_bar(props: &TabBarProps) -> Html {
                                         status_message.set(format!("Load failed: {}", e));
                                     }
                                 }
-    
+
                                 // Clear message after 3 seconds
                                 let status_message = status_message.clone();
                                 gloo::timers::callback::Timeout::new(3000, move || {
@@ -634,7 +661,7 @@ pub fn tab_bar(props: &TabBarProps) -> Html {
                             }
                         }
                     }) as Box<dyn FnMut(_)>);
-    
+
                     reader.set_onload(Some(onload.as_ref().unchecked_ref()));
                     reader.read_as_text(&file).unwrap();
                     onload.forget();
@@ -648,14 +675,14 @@ pub fn tab_bar(props: &TabBarProps) -> Html {
         "padding: 5px 10px; margin: 0 2px; border: 1px solid {}; background-color: {}; color: {};",
         colors.border, colors.header_bg, colors.text
     );
-    
+
     let _active_button_style = format!(
         "padding: 5px 10px; margin: 0 2px; border: 1px solid {}; background-color: {}; color: {}; font-weight: bold;",
-        colors.border, 
+        colors.border,
         match *theme {
             ThemeType::Light => "#ffffff",
             ThemeType::Dark => "#111111"
-        }, 
+        },
         colors.text
     );
 
@@ -668,20 +695,20 @@ pub fn tab_bar(props: &TabBarProps) -> Html {
             <button onclick={undo_onclick}>{ "Undo" }</button>
             <button onclick={redo_onclick}>{ "Redo" }</button>
             </div>
-            
+
             <div style="display: flex; gap: 5px;">
-                <button 
-                    onclick={light_theme_onclick} 
-                    style={format!("{} background-color: {};", 
+                <button
+                    onclick={light_theme_onclick}
+                    style={format!("{} background-color: {};",
                         button_style,
                         if matches!(*theme, ThemeType::Light) { "#ffffff" } else { colors.header_bg }
                     )}
                 >
                     { "Light" }
                 </button>
-                <button 
-                    onclick={dark_theme_onclick} 
-                    style={format!("{} background-color: {};", 
+                <button
+                    onclick={dark_theme_onclick}
+                    style={format!("{} background-color: {};",
                         button_style,
                         if matches!(*theme, ThemeType::Dark) { "#333333" } else { colors.header_bg }
                     )}
@@ -689,7 +716,7 @@ pub fn tab_bar(props: &TabBarProps) -> Html {
                     { "Dark" }
                 </button>
             </div>
-            
+
             <input
                 type="file"
                 accept=".csv"
