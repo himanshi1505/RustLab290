@@ -1,13 +1,19 @@
+#[cfg(feature = "cli")]
 use crate::backend::*;
+
 use crate::parser::*;
 use crate::structs::*;
 // use std::arch::x86_64::_CMP_UNORD_Q;
+#[cfg(feature = "cli")]
 use std::cmp::min;
+#[cfg(feature = "cli")]
 use std::io::{self, Write};
+#[cfg(feature = "cli")]
 use std::time::Instant;
+//#[cfg(feature = "gui")]
+//use std::cell::RefCell;
 #[cfg(feature = "gui")]
-use std::cell::RefCell;
-
+use crate::backend::Backend;
 
 const MAX_WIDTH: usize = 10;
 
@@ -15,6 +21,7 @@ pub struct Frontend {
     backend: Backend,
     rows: usize,
     cols: usize,
+    #[cfg(feature = "cli")]
     cell_width: usize,
     do_print: bool,
     top_left: Cell,
@@ -34,6 +41,7 @@ impl Frontend {
             backend,
             rows,
             cols,
+            #[cfg(feature = "cli")]
             cell_width: 12,
             do_print: true,
             top_left: Cell { row: 0, col: 0 },
@@ -44,10 +52,7 @@ impl Frontend {
     pub fn get_backend_mut(&mut self) -> &mut Backend {
         &mut self.backend
     }
-    #[cfg(feature = "gui")]
-    pub fn get_rows_col(&self) -> (usize,usize) {
-        (self.rows,self.cols)
-    }
+    #[cfg(feature = "cli")]
     fn number_to_column_header(number: usize) -> String {
         let mut num = number + 1;
         let mut result = String::new();
@@ -58,14 +63,14 @@ impl Frontend {
         }
         result
     }
-
+    #[cfg(feature = "cli")]
     pub fn print_board(&self) {
         if !self.do_print {
             return;
         }
         let row_width = min(MAX_WIDTH, self.rows - self.top_left.row);
         let col_width = min(MAX_WIDTH, self.cols - self.top_left.col);
-
+        
         print!("{:<width$}", "", width = self.cell_width);
         for col in self.top_left.col..(self.top_left.col + col_width) {
             print!(
@@ -100,7 +105,7 @@ impl Frontend {
             println!();
         }
     }
-
+    #[cfg(feature = "cli")]
     fn remove_spaces(s: &mut String) {
         let mut cleaned = String::new();
         let chars: Vec<char> = s.chars().collect();
@@ -178,7 +183,7 @@ impl Frontend {
             } 
             #[cfg(feature = "gui")]
             cmd if cmd.starts_with("load(") => {
-                let res = backend::Backend::load_csv(&mut self.backend, cmd, false);
+                let res = Backend::load_csv(&mut self.backend, cmd, false);
                 match res {
                     Ok(_) => {return true;}
                     Err(_) => {return false;}
@@ -187,7 +192,7 @@ impl Frontend {
             #[cfg(feature = "gui")]
             cmd if cmd.starts_with("save(") => {
                 println!("save");
-                let res = backend::Backend::save_to_csv(&self.backend, cmd);
+                let res = Backend::save_to_csv(&self.backend, cmd);
                 match res {
                     Ok(_) => {return true;}
                     Err(_) => {return false;}
@@ -197,7 +202,7 @@ impl Frontend {
             cmd if cmd.starts_with("copy(") => {
                 // self.backend.push_undo_state();
                 println!("copy");
-                let res = backend::Backend::copy(&mut self.backend, cmd);
+                let res = Backend::copy(&mut self.backend, cmd);
                 match res {
                     Ok(_) => {return true;}
                     Err(_) => {return false;}
@@ -206,7 +211,7 @@ impl Frontend {
             #[cfg(feature = "gui")]
             cmd if cmd.starts_with("cut(") => {
                 self.backend.push_undo_state();
-                let res = backend::Backend::cut(&mut self.backend, cmd);
+                let res = Backend::cut(&mut self.backend, cmd);
                 match res {
                     Ok(_) => {return true;}
                     Err(_) => {return false;}
@@ -215,7 +220,7 @@ impl Frontend {
             #[cfg(feature = "gui")]
             cmd if cmd.starts_with("paste(") => {
                 self.backend.push_undo_state();
-                let res = backend::Backend::paste(&mut self.backend, cmd);
+                let res = Backend::paste(&mut self.backend, cmd);
                 match res {
                     Ok(_) => {return true;}
                     Err(_) => {return false;}
@@ -224,7 +229,7 @@ impl Frontend {
             #[cfg(feature = "gui")]
             cmd if cmd.starts_with("autofill") => {
                 self.backend.push_undo_state();
-                let res = backend::Backend::autofill(&mut self.backend, cmd);
+                let res = Backend::autofill(&mut self.backend, cmd);
                 match res {
                     Ok(_) => {return true;}
                     Err(_) => {return false;}
@@ -234,7 +239,7 @@ impl Frontend {
             cmd if cmd.starts_with("sort") => {
                 println!("sort");
                 self.backend.push_undo_state();
-                let res = backend::Backend::sort(&mut self.backend, cmd);
+                let res = Backend::sort(&mut self.backend, cmd);
                 match res {
                     Ok(_) => {return true;}
                     Err(_) => {return false;}
@@ -253,8 +258,8 @@ impl Frontend {
             .unwrap_or(false)
         {
             if let Some(eq_pos) = input.find('=') {
-                #[cfg(feature = "gui")]
-                let formula = input[eq_pos..].trim();
+                //#[cfg(feature = "gui")]
+                //let formula = input[eq_pos..].trim();
                 let (cell_str, expr_str) = input.split_at(eq_pos);
                 let (rows, cols) = self.backend.get_rows_col();
                 #[cfg(feature = "gui")]
@@ -289,7 +294,7 @@ impl Frontend {
             self.run_frontend_command(input)
         }
     }
-
+    #[cfg(feature = "cli")]
     pub fn run(&mut self) {
         let mut status = "ok";
         let mut time_taken = 0.0;

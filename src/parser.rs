@@ -20,10 +20,7 @@ pub fn parse_load_or_save_cmd(
 ) -> Option<String> {
     let start_pos = 5; // "LOAD("
     let content = &expression[start_pos..];
-    let end_pos = match content.find(')') {
-        Some(pos) => pos,
-        None => return None,
-    };
+    let end_pos =  content.find(')')?;
     let file_name = &content[..end_pos];
 
     if file_name.is_empty() {
@@ -36,8 +33,8 @@ pub fn parse_load_or_save_cmd(
 pub fn parse_sort(backend: &Backend, expression: &str) -> Result<(Cell, Cell, bool), Box<dyn std::error::Error>> {
     // println!("Parsing sort command: {}", expression);
     let start_pos = 6; // "SORTA( or SORTD("
-    let mut a_or_d = true; // true for ascending, false for descending
-    let posi: &str = &expression[4 as usize..5 as usize];
+    let a_or_d; // true for ascending, false for descending
+    let posi: &str = &expression[4_usize..5_usize];
     // println!("{}", posi);
     if posi == "a" {
         a_or_d = true;
@@ -282,7 +279,7 @@ pub fn parse_autofill(
         }
     }  
 
-    return Err("Invalid command".to_string().into());
+     Err("Invalid command".to_string().into())
 }
 #[cfg(feature = "gui")]
 pub fn parse_cut_or_copy(backend: &Backend, expression: &str) -> Result<(Cell, Cell), Box<dyn std::error::Error>> {
@@ -332,12 +329,12 @@ pub fn parse_paste(backend: &Backend, expression: &str) -> Result<Cell, Box<dyn 
     };
     let cell_str = &content[..end_pos];
     let cell = parse_cell_reference(cell_str, backend.get_rows(), backend.get_cols());
-    let cell = match cell {
+     match cell {
         Some(cell) => Ok(cell),
-        None => return Err("Invalid cell reference".to_string().into()),
-    };
+        None =>  Err("Invalid cell reference".to_string().into()),
+    }
     // println!("Parsed cell: {:?}", cell);
-    cell
+    
 }
 
 //success param was not being used so removed it

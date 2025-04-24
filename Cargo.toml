@@ -8,15 +8,7 @@ edition = "2021"
 
 [features]
 default = ["cli"]
-cli = ["csv",
-"console_log",
-"wasm-bindgen",
-"web-sys",
-"js-sys",
-"serde-wasm-bindgen",
-"console_error_panic_hook",
-"log",
-"wasm-logger",]
+cli = []
 gui = [
 
 "csv",

@@ -1,6 +1,6 @@
 use yew::prelude::*;
-use std::collections::VecDeque;
-use std::cell::UnsafeCell;
+//use std::collections::VecDeque;
+//use std::cell::UnsafeCell;
 use std::rc::Rc;
 use std::cell::RefCell;
 use web_sys::FileReader;
@@ -9,19 +9,20 @@ use web_sys::FileReader;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use gloo::file::callbacks::read_as_text;
+//use gloo::file::callbacks::read_as_text;
 
 
-use gloo::file::File;
+//use gloo::file::File;
 use gloo::utils::window;
 
 
 
-use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, HtmlInputElement, Event, ProgressEvent, Url};
-use crate::backend::Backend;
+//use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, HtmlInputElement, Event, ProgressEvent, Url};
+use web_sys::{Blob, BlobPropertyBag, HtmlInputElement, Event, ProgressEvent, Url};
+//use crate::backend::Backend;
 use crate::frontend::Frontend;
-use crate::structs::{Cell, Operand, OperandType, OperandData, CellData, Function, CellError};
-
+//use crate::structs::{Cell, Operand, OperandType, OperandData, CellData, Function, CellError};
+use crate::structs::CellError;
 // Added ThemeType enum to track current theme
 #[derive(Clone, PartialEq)]
 pub enum ThemeType {
@@ -123,7 +124,7 @@ pub fn app() -> Html {
     let theme = use_state(|| ThemeType::Light); // Initialize with light theme
     
     // Get theme colors
-    let colors = ThemeColors::get(&*theme);
+    let colors = ThemeColors::get(&theme);
     
     html! {
         <div style={format!("
@@ -193,7 +194,7 @@ pub fn grid(props: &GridProps) -> Html {
     // Function to convert column index to letter (0 -> A, 1 -> B, etc.)
     fn col_to_letter(col: usize) -> String {
         let mut result = String::new();
-        let mut n = col;
+        let mut n = col as i32;
         while n >= 0 {
             result.insert(0, (b'A' + (n % 26) as u8) as char);
             if n < 26 { break; }
@@ -288,11 +289,12 @@ pub fn grid(props: &GridProps) -> Html {
                                     let celldata = unsafe { 
                                         backend.get_cell_value(row, col)
                                     };
-                                     let val = if celldata.error == CellError::NoError {
-                                            celldata.value.to_string()
+                                     let val = unsafe{if (*celldata).error == CellError::NoError {
+                                            (*celldata).value.to_string()
                                         } else {
                                             "ERR".to_string()
-                                        };
+                                        }
+                                    };
                                     // let val = unsafe { 
                                     //     backend.get_cell_value(row, col).value.to_string()
                                     // };
@@ -380,7 +382,8 @@ pub fn formula_bar(props: &FormulaBarProps) -> Html {
 
 #[function_component(CommandBar)]
 pub fn command_bar(props: &CommandBarProps) -> Html {
-    let input_value = use_state(|| String::new());
+    //let input_value = use_state(|| String::new());
+    let input_value = use_state(String::new);
     let status = use_state(|| None::<bool>);
     let input_ref = use_node_ref();
 
@@ -456,10 +459,11 @@ pub fn download_csv(content: String, filename: &str) {
     let array = js_sys::Array::new();
     array.push(&JsValue::from_str(&content));
 
-    let blob = Blob::new_with_str_sequence_and_options(
-        &array,
-        BlobPropertyBag::new().type_("text/csv"),
-    ).unwrap();
+    let blob = {
+        let options = BlobPropertyBag::new();
+        options.set_type("text/csv");
+        Blob::new_with_str_sequence_and_options(&array, &options)
+    }.unwrap();
 
     let url = Url::create_object_url_with_blob(&blob).unwrap();
 
@@ -475,14 +479,15 @@ pub fn download_csv(content: String, filename: &str) {
 pub fn tab_bar(props: &TabBarProps) -> Html {
     let frontend = props.frontend.clone();
     let update_trigger = props.update_trigger.clone();
-    let status_message = use_state(|| String::new());
+   // let status_message = use_state(|| String::new());
+    let status_message = use_state(String::new);
     let file_input_ref = use_node_ref();
     let rows = props.rows;
     let cols = props.cols;
     let theme = props.theme.clone();
     
     // Get theme colors
-    let colors = ThemeColors::get(&*theme);
+    let colors = ThemeColors::get(&theme);
     
     // Theme toggle buttons
     let light_theme_onclick = {
@@ -552,8 +557,8 @@ pub fn tab_bar(props: &TabBarProps) -> Html {
                 for col in 0..cols {
                     unsafe {
                         let celldata = backend.get_cell_value(row, col);
-                        let val = if celldata.error == CellError::NoError {
-                            celldata.value.to_string()
+                        let val = if (*celldata).error == CellError::NoError {
+                            (*celldata).value.to_string()
                         } else {
                             "Error".to_string()
                         };
@@ -644,7 +649,7 @@ pub fn tab_bar(props: &TabBarProps) -> Html {
         colors.border, colors.header_bg, colors.text
     );
     
-    let active_button_style = format!(
+    let _active_button_style = format!(
         "padding: 5px 10px; margin: 0 2px; border: 1px solid {}; background-color: {}; color: {}; font-weight: bold;",
         colors.border, 
         match *theme {

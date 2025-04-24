@@ -11,29 +11,17 @@ use std::collections::VecDeque;
 #[cfg(feature = "gui")]
 use std::fs::File;
 #[cfg(feature = "gui")]
-use std::io::{BufReader, BufWriter};
+use std::io::BufWriter;
+
+
 
 #[cfg(feature = "gui")]
-
-
-// #[cfg(feature = "gui")]
-use csv::{ReaderBuilder, WriterBuilder, Writer};
+use csv::{ReaderBuilder, WriterBuilder};
 // use web_sys::cell_index;
 // use web_sys::HtmlTableCellElement;
 // #[cfg(feature = "gui")]
 
 
-#[cfg(feature = "gui")]
-fn number_to_column_header(number: usize) -> String {
-    let mut num = number + 1;
-    let mut result = String::new();
-    while num > 0 {
-        let rem = (num - 1) % 26;
-        result.insert(0, (b'A' + rem as u8) as char);
-        num = (num - 1) / 26;
-    }
-    result
-}
 
 #[derive(Debug)]
 pub struct Backend {
@@ -54,10 +42,11 @@ pub struct Backend {
     redo_stack: VecDeque<Vec<Vec<(CellData, String)>>>,
     
 }
-
+#[cfg(feature = "gui")]
+type CellDependencies = (Vec<(usize, usize)>, Vec<(usize, usize)>);
 impl Backend {
     #[cfg(feature = "gui")]
-    pub fn get_cell_dependencies(&self, row: usize, col: usize) -> (Vec<(usize, usize)>, Vec<(usize, usize)>) {
+    pub fn get_cell_dependencies(&self, row: usize, col: usize) -> CellDependencies {
         let mut parents = Vec::new();
         let mut children = Vec::new();
 
@@ -65,12 +54,12 @@ impl Backend {
             let cell_data = self.get_cell_value(row, col);
 
             // Collect children (dependents)
-            for &(child_row, child_col) in &cell_data.dependents {
+            for &(child_row, child_col) in &(*cell_data).dependents {
                 children.push((child_row as usize, child_col as usize));
             }
 
             // Collect parents (cells this cell depends on)
-            match &cell_data.function.data {
+            match &(*cell_data).function.data {
                 FunctionData::RangeFunction(range) => {
                     for r in range.top_left.row..=range.bottom_right.row {
                         for c in range.top_left.col..=range.bottom_right.col {
@@ -133,15 +122,7 @@ impl Backend {
             copy_stack: vec![vec![0; 1]; 1],
         }
     }
-    #[cfg(feature = "gui")]
-    pub fn reset(&mut self) {
-        let grid = unsafe { &mut *self.grid.get() };
-        for row in grid {
-            for cell in row {
-                *cell = CellData::default();
-            }
-        }
-    }
+   
 
     // Unsafe mutable access
     pub unsafe fn get_cell_value(&self, row: usize, col: usize) -> *mut CellData {
@@ -364,26 +345,6 @@ impl Backend {
         }
     }
 
-    /// Checks if this function can be safely replaced with a constant value
-    #[cfg(feature = "gui")]
-    pub fn is_expression_constant(&self, func: &Function) -> bool {
-        match func.type_ {
-            FunctionType::Plus
-            | FunctionType::Minus
-            | FunctionType::Multiply
-            | FunctionType::Divide => {
-                if let FunctionData::BinaryOp(bin_op) = func.data {
-                    matches!(bin_op.first.type_, OperandType::Int)
-                        && matches!(bin_op.second.type_, OperandType::Int)
-                } else {
-                    false
-                }
-            }
-            FunctionType::Constant => true,
-            _ => false,
-        }
-    }
-
     /// Evaluates a function and returns (value, error)
     pub fn evaluate_expression(&self, func: &Function) -> (i32, CellError) {
         match func.data {
@@ -467,7 +428,7 @@ impl Backend {
                 #[cfg(feature = "gui")]
                 
                {
-                self.formula_strings[cell.row][cell.col] = "=".to_owned() + &expression.to_string();
+                self.formula_strings[cell.row][cell.col] = "=".to_owned() + expression;
                } 
                 return Ok(());
             }
@@ -733,19 +694,19 @@ impl Backend {
     }
     #[cfg(feature = "gui")]
     pub fn parse_cut_or_copy(&self, expression: &str) -> Result<(Cell, Cell), Box<dyn std::error::Error>> {
-        crate::parser::parse_cut_or_copy(&self, expression)
+        crate::parser::parse_cut_or_copy(self, expression)
     }
     #[cfg(feature = "gui")]
     pub fn parse_paste(&self, expression: &str) -> Result<Cell, Box<dyn std::error::Error>> {
-        crate::parser::parse_paste(&self, expression)
+        crate::parser::parse_paste(self, expression)
     }
     #[cfg(feature = "gui")]
     pub fn parse_autofill(&self, expression: &str) -> Result<(Cell, Cell, Cell), Box<dyn std::error::Error>> {
-        crate::parser::parse_autofill(&self, expression)
+        crate::parser::parse_autofill(self, expression)
     }
     #[cfg(feature = "gui")]
     pub fn parse_sort(&self, expression: &str) -> Result<(Cell, Cell, bool), Box<dyn std::error::Error>> {
-        crate::parser::parse_sort(&self, expression)
+        crate::parser::parse_sort(self, expression)
     }
 
     pub fn get_rows(&self) -> usize {
@@ -764,7 +725,7 @@ impl Backend {
         };
         let tl = (tl_cell.row, tl_cell.col);
         let br = (br_cell.row, br_cell.col);
-        let mut grid_ref = unsafe {&mut *self.grid.get()};
+        let grid_ref = unsafe {&mut *self.grid.get()};
         grid_ref[tl.0..=br.0].sort_by(|a, b| {
             let cmp_result = a[tl.1].value.cmp(&b[tl.1].value);
             if a_or_d {
@@ -794,7 +755,7 @@ impl Backend {
 
     #[cfg(feature = "gui")]
     // Helper: Create snapshot of current state
-    pub fn create_snapshot(&self) -> Vec<Vec<(CellData, String)>> {
+    pub fn create_snapshot(&self) -> Vec<Vec<( CellData, String)>> {
         let mut snapshot = Vec::with_capacity(self.rows);
         for row in 0..self.rows {
             let mut row_data = Vec::with_capacity(self.cols);
@@ -803,7 +764,7 @@ impl Backend {
                 let cell_data = self.get_cell_value(row, col) ;
                 row_data.push(
                     
-                    (cell_data.clone(), self.formula_strings[row][col].clone())
+                    ((*cell_data).clone(), self.formula_strings[row][col].clone())
                     
                 );
             }
@@ -821,7 +782,7 @@ impl Backend {
                 
                 unsafe{
                     let cell_data = self.get_cell_value(row_idx, col_idx) ;
-                    let mut cell_ptr = cell_data as *mut CellData;
+                    let cell_ptr = cell_data ;
                     (*cell_ptr).value = value.0.value;
                     (*cell_ptr).error = value.0.error;
                     (*cell_ptr).dependents = value.0.dependents.clone();
@@ -840,12 +801,12 @@ impl Backend {
     }
 }
 
-    #[cfg(feature = "gui")]
-    // Helper: Clear undo/redo stacks
-    pub fn clear_undo_redo(&mut self) {
-        self.undo_stack.clear();
-        self.redo_stack.clear();
-    }
+    // #[cfg(feature = "gui")]
+    // // Helper: Clear undo/redo stacks
+    // pub fn clear_undo_redo(&mut self) {
+    //     self.undo_stack.clear();
+    //     self.redo_stack.clear();
+    // }
 
     #[cfg(feature = "gui")]
     // Helper: Save current state to undo stack
@@ -866,19 +827,19 @@ impl Backend {
         let tl = (tl_cell.row, tl_cell.col);
         let br = (br_cell.row, br_cell.col);
         let dest = (dest_cell.row, dest_cell.col);
-        let v = unsafe { self.get_cell_value(tl.0, tl.1).value };
-        let d = unsafe { self.get_cell_value(tl.0, tl.1).value - self.get_cell_value(tl.0 + 1, tl.1).value };
-        let r  = unsafe { (self.get_cell_value(tl.0, tl.1).value as f64) / (self.get_cell_value(tl.0 + 1, tl.1).value as f64) };
+        let v = unsafe { (*(self.get_cell_value(tl.0, tl.1))).value };
+        let d = unsafe { (*(self.get_cell_value(tl.0, tl.1))).value - (*(self.get_cell_value(tl.0 + 1, tl.1))).value };
+        let r  = unsafe { ((*(self.get_cell_value(tl.0, tl.1))).value as f64) / ((*(self.get_cell_value(tl.0 + 1, tl.1))).value as f64) };
         println!("v: {:?}, d: {:?}, r: {:?}", v, d, r);
-        println!("tl_value: {:?}, br_value: {:?}", unsafe { self.get_cell_value(tl.0, tl.1).value }, unsafe { self.get_cell_value(tl.0 + 1, tl.1).value });
+        println!("tl_value: {:?}, br_value: {:?}", unsafe { (*(self.get_cell_value(tl.0, tl.1))).value }, unsafe { (*(self.get_cell_value(tl.0 + 1, tl.1))).value });
         let mut is_constant = true;
         let mut is_ap = true;
         let mut is_gp = true;
         let grid_ref = unsafe {&*self.grid.get()};
         println!("im hereee");
-        for row in tl.0..=br.0 {
-            for col in tl.1..=br.1 {
-                if grid_ref[row][col].value != v {
+        for row in grid_ref.iter().take(br.0 + 1).skip(tl.0) {
+            for col in &row[tl.1..=br.1] {
+                if col.value != v {
                     is_constant = false;
                     break;
                 }
@@ -896,7 +857,7 @@ impl Backend {
                     }
                 }
             }
-            return Ok(());
+             Ok(())
         } else {
             for row in tl.0..br.0 {
                 for col in tl.1..=br.1 {
@@ -918,7 +879,7 @@ impl Backend {
                         }
                     }
                 }
-                return Ok(());
+                 Ok(())
             }
             else {
                 for row in tl.0..br.0 {
@@ -941,10 +902,10 @@ impl Backend {
                             }
                         }
                     }
-                    return Ok(());
+                     Ok(())
                 }
                 else {
-                    return Err("Autofill not possible".to_string().into());
+                     Err("Autofill not possible".to_string().into())
                 }
             }
         }
@@ -989,7 +950,7 @@ impl Backend {
         for row in tl.0..=br.0 {
             let mut row_data = Vec::new();
             for col in tl.1..=br.1 {
-                row_data.push(unsafe { self.get_cell_value(row, col).value });
+                row_data.push(unsafe { (*(self.get_cell_value(row, col))).value });
             }
             copied_data.push(row_data);
         }
@@ -999,10 +960,7 @@ impl Backend {
     #[cfg(feature = "gui")]
     pub fn paste(&mut self, expression: &str) -> Result<(), Box<dyn std::error::Error>> {
         let celll = self.parse_paste(expression);
-        let tl_cell = match celll {
-            Ok(tl) => tl,
-            Err(err) => return Err(err),
-        };
+        let tl_cell = celll?;
         let tl = (tl_cell.row, tl_cell.col);
         // println!("tl: {:?}", tl);
         let br = (tl.0 + self.copy_stack.len() - 1, tl.1 + self.copy_stack[0].len() - 1);
@@ -1016,15 +974,10 @@ impl Backend {
                 if row < self.rows && col < self.cols {
                     let cell = Cell { row, col };
                     // println!("row: {:?}, col: {:?}", row, col);
-                    let res = self.set_cell_value(cell, &self.copy_stack[row - tl.0][col - tl.1].to_string());
-                    let col_header = 
+                    let _res = self.set_cell_value(cell, &self.copy_stack[row - tl.0][col - tl.1].to_string());
+                   //let _col_header = 
                     self.formula_strings[row][col] = self.copy_stack[row - tl.0][col - tl.1].to_string();
-                    // unsafe {(*self.grid.get().wrapping_add(row).wrapping_add(col)).value = self.copy_stack[row - tl.0][col - tl.1];}
-                    // unsafe {let cell = self.get_cell_value(row, col);
-                    // cell.value = self.copy_stack[row - tl.0][col - tl.1];}
-                    // if let Err(err) = res {
-                    //     println!("Error pasting value: {:?}", err);
-                    // }
+                   
                 }
             }
         }
@@ -1038,11 +991,11 @@ impl Backend {
         };
         let file = File::create(filename)?;
         let mut wtr = WriterBuilder::new().from_writer(BufWriter::new(file));
-        let grid_ref = self.formula_strings.clone();
+        //let grid_ref = self.formula_strings.clone();
         for row in 0..self.rows {
             let mut record = Vec::new();
             for col in 0..self.cols {
-                unsafe {record.push(self.get_cell_value(row, col).value.to_string())};
+                unsafe {record.push((*(self.get_cell_value(row, col))).value.to_string())};
                 //FIX KARNA HAI ISKO
                 // record.push(grid_ref[row][col].clone());
                 // unsafe {
@@ -1091,7 +1044,7 @@ impl Backend {
 
         let no_of_rows = csv_data.len();
         let no_of_cols = csv_data
-            .get(0)
+            .first()
             .map_or(0, |row| row.len());
         *self = Backend::new(no_of_rows, no_of_cols);
         self.get_rows_col().0 = no_of_rows;
@@ -1103,7 +1056,7 @@ impl Backend {
                 if row_idx < self.rows && col_idx < self.cols {
                     let cell = Cell { row: row_idx, col: col_idx };
                     let res =  self.set_cell_value(cell, field);
-                    if let Err(err) = res {
+                    if let Err(_err) = res {
                         return Err("Invalid cell value".to_string().into());
                     }
                 }
@@ -1112,49 +1065,49 @@ impl Backend {
 
         Ok(())
     }
-    #[cfg(feature = "gui")]
-    pub fn load_csv_string(&mut self, csv_data: &str, is_header_present: bool) -> Result<(), Box<dyn std::error::Error>> {
-        let mut reader = ReaderBuilder::new()
-            .has_headers(is_header_present)
-            .from_reader(csv_data.as_bytes());
+    // #[cfg(feature = "gui")]
+    // pub fn load_csv_string(&mut self, csv_data: &str, is_header_present: bool) -> Result<(), Box<dyn std::error::Error>> {
+    //     let mut reader = ReaderBuilder::new()
+    //         .has_headers(is_header_present)
+    //         .from_reader(csv_data.as_bytes());
     
-        let mut rows: Vec<Vec<String>> = Vec::new();
-        for result in reader.records() {
-            let record = result?;
-            rows.push(record.iter().map(|s| s.trim().to_string()).collect());
-        }
+    //     let mut rows: Vec<Vec<String>> = Vec::new();
+    //     for result in reader.records() {
+    //         let record = result?;
+    //         rows.push(record.iter().map(|s| s.trim().to_string()).collect());
+    //     }
     
-        let num_rows = rows.len();
-        let num_cols = rows.get(0).map_or(0, |r| r.len());
-        *self = Backend::new(num_rows, num_cols);
-        self.get_rows_col().0 = num_rows;
-        self.get_rows_col().1 = num_cols;
+    //     let num_rows = rows.len();
+    //     let num_cols = rows.get(0).map_or(0, |r| r.len());
+    //     *self = Backend::new(num_rows, num_cols);
+    //     self.get_rows_col().0 = num_rows;
+    //     self.get_rows_col().1 = num_cols;
     
-        for (row_idx, row) in rows.iter().enumerate() {
-            for (col_idx, val) in row.iter().enumerate() {
-                let cell = Cell { row: row_idx, col: col_idx };
-                self.set_cell_value(cell, val);
-            }
-        }
+    //     for (row_idx, row) in rows.iter().enumerate() {
+    //         for (col_idx, val) in row.iter().enumerate() {
+    //             let cell = Cell { row: row_idx, col: col_idx };
+    //             self.set_cell_value(cell, val);
+    //         }
+    //     }
     
-        Ok(())
-    }
-    #[cfg(feature = "gui")]
-    pub fn to_csv_string(&self) -> Result<String, Box<dyn std::error::Error>> {
-        let mut writer = WriterBuilder::new().from_writer(Vec::new());
+    //     Ok(())
+    // }
+    // #[cfg(feature = "gui")]
+    // pub fn to_csv_string(&self) -> Result<String, Box<dyn std::error::Error>> {
+    //     let mut writer = WriterBuilder::new().from_writer(Vec::new());
         
-        for row in 0..self.rows {
-            let mut record = Vec::new();
-            for col in 0..self.cols {
-                unsafe {
-                    record.push(self.get_cell_value(row, col).value.to_string());
-                }
-            }
-            writer.write_record(&record)?;
-        }
+    //     for row in 0..self.rows {
+    //         let mut record = Vec::new();
+    //         for col in 0..self.cols {
+    //             unsafe {
+    //                 record.push((*(self.get_cell_value(row, col))).value.to_string());
+    //             }
+    //         }
+    //         writer.write_record(&record)?;
+    //     }
         
-        Ok(String::from_utf8(writer.into_inner()?)?)
-    }
+    //     Ok(String::from_utf8(writer.into_inner()?)?)
+    // }
     #[cfg(feature = "gui")]
     pub fn load_csv_from_str(&mut self, data: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut rdr = ReaderBuilder::new()
@@ -1182,36 +1135,36 @@ impl Backend {
             for (col_idx, field) in row.iter().enumerate() {
                 if row_idx < self.rows && col_idx < self.cols {
                     let cell = Cell { row: row_idx, col: col_idx };
-                    self.set_cell_value(cell, field);
+                    let _ =self.set_cell_value(cell, field);
                 }
             }
         }
         
         Ok(())
     }
-    #[cfg(feature = "gui")]
-    // #[server]
-    pub fn save_to_csv_internal(&self) -> Result<(), Box<dyn Error>> {
-        let filename = self.filename.clone();
-        let mut wtr = Writer::from_path(filename)?;
-        let grid_ref = self.formula_strings.clone();
-        for row in 0..self.rows {
-            let mut record = Vec::new();
-            for col in 0..self.cols {
-                record.push(grid_ref[row][col].clone());
-            }
-            wtr.write_record(&record)?;
-        }
-        wtr.flush()?;
-        Ok(())
-    }
+    // #[cfg(feature = "gui")]
+    // // #[server]
+    // pub fn save_to_csv_internal(&self) -> Result<(), Box<dyn Error>> {
+    //     let filename = self.filename.clone();
+    //     let mut wtr = Writer::from_path(filename)?;
+    //     let grid_ref = self.formula_strings.clone();
+    //     for row in 0..self.rows {
+    //         let mut record = Vec::new();
+    //         for col in 0..self.cols {
+    //             record.push(grid_ref[row][col].clone());
+    //         }
+    //         wtr.write_record(&record)?;
+    //     }
+    //     wtr.flush()?;
+    //     Ok(())
+    // }
 
-    #[cfg(feature = "gui")]
-    // #[server]
-    pub fn save_as_internal(&mut self, filename: &str) -> Result<(), Box<dyn Error>> {
-        self.filename = filename.to_string();
-        self.save_to_csv_internal()
-    }
+    // #[cfg(feature = "gui")]
+    // // #[server]
+    // pub fn save_as_internal(&mut self, filename: &str) -> Result<(), Box<dyn Error>> {
+    //     self.filename = filename.to_string();
+    //     self.save_to_csv_internal()
+    // }
 }
 
 
