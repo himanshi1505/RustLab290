@@ -108,7 +108,7 @@ pub fn parse_cell_reference(reference: &str, rows: usize, cols: usize) -> Option
 
     Some(cell)
 }
-//// Parses a binary operation from two operands and returns a BinaryOp struct.
+/// Parses a binary operation from two operands and returns a BinaryOp struct.
 pub fn parse_binary_op(
     operand1: &str,
     operand2: &str,
