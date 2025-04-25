@@ -1,10 +1,10 @@
 \documentclass{article}
 \usepackage{graphicx} % Required for inserting images
-\usepackage[utf8]{inputenc} % Added for Unicode support
-\usepackage{textcomp} % Added for additional symbols
-\usepackage{listings} % Added for better code handling
+\usepackage{hyperref}
+\usepackage[utf8]{inputenc} % Ensure UTF-8 encoding support
+\usepackage{textcomp} % For additional text symbols
 
-\title{Documentation Questions}
+\title{Documentation}
 \author{Dhruv Pawar \and Himanshi Bhandari \and Eshita Zjigyasu}
 
 \date{25th April 2025}
@@ -135,16 +135,6 @@ We maintained the original design of the terminal version and extended it by add
     \item We realized that implementing \texttt{if-else} would require an abstract syntax tree (AST) for conditionals, so it was excluded.
 \end{itemize}
 
-\textbf{Module Workflow:}
-\begin{lstlisting}
-main.rs
-+-- cli.rs -> frontend.rs -> parser.rs -> backend.rs   (Terminal mode)
-+-- main_gui/
-    +-- app.rs -> frontend.rs -> parser.rs -> backend.rs   (GUI mode)
-    +-- index.html
-    +-- styles.css
-\end{lstlisting}
-
 \textbf{Workflow Explained:}
 \begin{itemize}
     \item \textbf{main.rs:} Entry point. Based on CLI/GUI flag, calls either \texttt{cli.rs} or \texttt{main\_gui.rs}.
@@ -152,7 +142,7 @@ main.rs
     \item \textbf{frontend.rs:} Shared logic. Parses input and sends it to \texttt{backend.rs}.
     \item \textbf{parser.rs:} Converts text into structured AST.
     \item \textbf{backend.rs:} Evaluates AST using spreadsheet data.
-    \item \textbf{main\_gui/:} Web interface using Yew/WASM. \texttt{app.rs} manages UI, calls shared \texttt{frontend.rs}.
+    \item \textbf{main\_gui.rs:} Web interface using Yew/WASM. \texttt{app.rs} manages UI, calls shared \texttt{frontend.rs}.
 \end{itemize}
 
 \subsection*{2. Frontend-Backend Interface}
@@ -328,8 +318,94 @@ Overall, our design strikes a solid balance between practical implementation and
     \item We also realized that implementing \texttt{if-else} would require building an AST to handle complex conditions, and therefore, we did not implement it.
 \end{itemize}
 
+\section*{Website Features and Usage}
+
+This spreadsheet application provides a user-friendly interface with a wide range of functionalities. Below is a detailed description of the key features and how to use them effectively.
+
+\subsection*{1. Interface Components}
+\begin{itemize}
+    \item \textbf{Tab Bar:} Includes buttons for \texttt{Undo}, \texttt{Redo}, \texttt{Save}, \texttt{Load}, and toggling between \texttt{Light} and \texttt{Dark} themes.
+    \item \textbf{Formula Bar:} Displays the formula of the currently selected cell.
+    \item \textbf{Grid with Scrollbars:} Displays the spreadsheet cells with horizontal and vertical scroll support.
+    \item \textbf{Command Bar:} Allows entry of commands with a status message display.
+    \item \textbf{Terminal Features:} Accepts advanced commands to perform spreadsheet operations.
+    \item \textbf{Themes:} Users can toggle between \texttt{Light} and \texttt{Dark} modes by clicking the respective theme buttons.
+\end{itemize}
+
+\subsection*{2. Cell Selection and Highlighting}
+\begin{itemize}
+    \item The currently selected cell is highlighted with a blue colour.
+    \item The immediate \textbf{parents} (cells this one depends on) and \textbf{children} (cells that depend on this one) are also color-coded: orange for parents and green for children.
+\end{itemize}
+
+\subsection*{3. Cut, Copy, Paste Operations}
+\begin{itemize}
+    \item Use terminal commands to manipulate rectangular or vertical ranges of cells.(Only values are cut,copy,pasted. Dependencies are not.)
+    \item \texttt{cut(A1:A3)}: Cuts a vertical range from A1 to A3.
+    \item \texttt{copy(A1:A4)}: Copies a vertical range from A1 to A4.
+    \item \texttt{paste(B1)}: Pastes the most recent cut/copied data starting at cell B1.
+    \item For a single cell: \texttt{cut(A1:A1)} or \texttt{copy(A1:A1)} targets only cell A1.
+    \item \textbf{Rectangular Range Example:}
+    \begin{itemize}
+        \item \texttt{copy(A1:B3)}: Copies the rectangular block defined by top-left cell A1 and bottom-right cell B3:
+        \begin{center}
+        \begin{tabular}{|c|c|}
+        \hline
+        A1 & B1 \\
+        \hline
+        A2 & B2 \\
+        \hline
+        A3 & B3 \\
+        \hline
+        \end{tabular}
+        \end{center}
+        \item \texttt{cut(A1:B3)}: Cuts the same rectangular block.
+        \item \texttt{paste(C1)}: Pastes the 3×2 block starting from cell C1, which will fill:
+        \begin{center}
+        \begin{tabular}{|c|c|}
+        \hline
+        C1 & D1 \\
+        \hline
+        C2 & D2 \\
+        \hline
+        C3 & D3 \\
+        \hline
+        \end{tabular}
+        \end{center}
+    \end{itemize}
+\end{itemize}
 
 
+\subsection*{4. Autofill (Columns Only)}
+\begin{itemize}
+    \item Autofill can be used to extend patterns vertically within a column.(Only values are autofilled).
+    \item Command: \texttt{autofill(A1:A4, A7)}
+    \item Explanation: Cells A1 to A4 are used to detect the pattern (e.g., numeric increment, formulas, etc.), and the result is extended to fill up to cell A7
+\end{itemize}
 
+\subsection*{5. Sorting Operations}
+\begin{itemize}
+    \item \texttt{sorta(A1:A5)}: Sorts the values in the range A1 to A5 in ascending order(The entire row is shifted).
+    \item \texttt{sortd(A1:A5)}: Sorts the values in the range A1 to A5 in descending order(The entire row is shifted).
+\end{itemize}
+
+\subsection*{6. Undo and Redo}
+\begin{itemize}
+    \item \texttt{Undo:} Click on the \texttt{Undo} tab button, then click on any cell to refresh and view the updated state.(Dependencies are taken care of).
+    \item \texttt{Redo:} Click on the \texttt{Redo} tab button, then click on any cell to refresh and view the updated state.(Dependencies are taken care of).
+\end{itemize}
+
+\subsection*{7. Save and Load}
+\begin{itemize}
+    \item \texttt{Save:} Click the \texttt{Save} button in the Tab Bar to download the current spreadsheet as a file.(Only values are saved dependencies are not).
+    \item \texttt{Load:} Click the \texttt{Load} button to upload and restore a previously saved spreadsheet file.(Only values are saved dependencies are not).
+\end{itemize}
+
+\subsection*{8. Note on UI Refresh}
+After executing any command (cut, paste, autofill, sort, etc.), \textbf{click on another cell} in the grid to trigger an update and view the changes on the interface.
+
+\section*{Source Code}
+The full source code for this project is available on GitHub:
+\href{https://github.com/himanshi1505/RustLab290}{\texttt{github.com/himanshi1505/RustLab290}}.
 
 \end{document}
