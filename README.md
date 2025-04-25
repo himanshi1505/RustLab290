@@ -21,7 +21,7 @@ This project is a spreadsheet Program which can be run using terminal or using w
 - `styles.css` : Visual styling.
 
 ## Features
-- Basic spreadsheet functionalities such as binary- addition, subtraction, multiplication, division,range- sum , min, max, stdev.
+- Basic spreadsheet functionalities such as binary- addition, subtraction, multiplication, division,range- sum , min, max, stdev, avg.
 - Cell referencing and formula evaluation.
 - Sleep, enable and disable display, scroll_to , a ,w ,s ,d to navigate.
 ## Website features and Usage
