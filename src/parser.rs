@@ -2,7 +2,6 @@
 use crate::backend::Backend;
 use crate::structs::*;
 
-
 #[cfg(feature = "gui")]
 /// Parses a command to load or save a file.
 pub fn parse_load_or_save_cmd(expression: &str) -> Option<String> {

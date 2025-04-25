@@ -26,7 +26,7 @@ use csv::{ReaderBuilder, WriterBuilder};
 pub struct Backend {
     /// The grid of cells stored in an UnsafeCell for interior mutability
     grid: UnsafeCell<Vec<Vec<CellData>>>,
-     /// Number of rows in the spreadsheet
+    /// Number of rows in the spreadsheet
     rows: usize,
     /// Number of columns in the spreadsheet
     cols: usize,
@@ -38,7 +38,7 @@ pub struct Backend {
     /// Current filename for save/load operations
     pub filename: String,
     #[cfg(feature = "gui")]
-      /// Clipboard storage for copy/paste operations
+    /// Clipboard storage for copy/paste operations
     pub copy_stack: Vec<Vec<i32>>,
     #[cfg(feature = "gui")]
     /// Undo stack for storing previous states of the spreadsheet
@@ -51,7 +51,7 @@ pub struct Backend {
 type CellDependencies = (Vec<(usize, usize)>, Vec<(usize, usize)>);
 impl Backend {
     #[cfg(feature = "gui")]
-        /// Gets the dependencies of a cell (parents and children in the dependency graph)
+    /// Gets the dependencies of a cell (parents and children in the dependency graph)
     pub fn get_cell_dependencies(&self, row: usize, col: usize) -> CellDependencies {
         let mut parents = Vec::new();
         let mut children = Vec::new();
@@ -151,14 +151,13 @@ impl Backend {
         }
     }
 
- 
     /// Gets a mutable pointer to a cell's data (unsafe)
     pub unsafe fn get_cell_value(&self, row: usize, col: usize) -> *mut CellData {
         let grid_ptr = (*self.grid.get())[row].as_mut_ptr();
         grid_ptr.add(col)
     }
     /// Resets the `dirty_parents` flag for a starting cell and all its dependent cells.
-    /// 
+    ///
     /// This function performs a depth-first traversal of the dependency graph starting from
     /// the given cell, resetting the `dirty_parents` flag to 0 for all reachable cells.
     /// This is typically used after dependency checking to clean up the dirty flags.
@@ -337,7 +336,7 @@ impl Backend {
     }
 
     /// Sets dirty parent counts for topological sorting
-    /// This function is used to mark cells that need to be updated 
+    /// This function is used to mark cells that need to be updated
     pub fn set_dirty_parents(&mut self, cell: &Cell, stack: &mut Vec<*mut CellData>) {
         unsafe {
             let root_data = self.get_cell_value(cell.row, cell.col);
@@ -601,6 +600,7 @@ impl Backend {
                         }
                         CellError::DivideByZero => return Err(CellError::DivideByZero),
                         CellError::DependencyError => return Err(CellError::DependencyError),
+                        CellError::Overflow => return Err(CellError::Overflow),
                     }
                 }
             }
@@ -622,6 +622,7 @@ impl Backend {
                         }
                         CellError::DivideByZero => return Err(CellError::DivideByZero),
                         CellError::DependencyError => return Err(CellError::DependencyError),
+                        CellError::Overflow => return Err(CellError::Overflow),
                     }
                 }
             }
@@ -646,6 +647,7 @@ impl Backend {
                         }
                         CellError::DivideByZero => return Err(CellError::DivideByZero),
                         CellError::DependencyError => return Err(CellError::DependencyError),
+                        CellError::Overflow => return Err(CellError::Overflow),
                     }
                 }
             }
@@ -671,6 +673,7 @@ impl Backend {
                         }
                         CellError::DivideByZero => return Err(CellError::DivideByZero),
                         CellError::DependencyError => return Err(CellError::DependencyError),
+                        CellError::Overflow => return Err(CellError::Overflow),
                     }
                 }
             }
@@ -700,6 +703,7 @@ impl Backend {
                         }
                         CellError::DivideByZero => return Err(CellError::DivideByZero),
                         CellError::DependencyError => return Err(CellError::DependencyError),
+                        CellError::Overflow => return Err(CellError::Overflow),
                     }
                 }
             }
@@ -725,7 +729,7 @@ impl Backend {
     }
     /// Evaluates the sleep function
     /// This function is used to pause execution for a specified number of seconds
-    /// # Usage: A1=SLEEP(4) 
+    /// # Usage: A1=SLEEP(4)
     /// or
     /// # Usage: A1=SLEEP(A2)
     pub fn sleep_function(&self, operand: &Operand) -> Result<i32, CellError> {
@@ -759,6 +763,10 @@ impl Backend {
     pub fn multiply_op(&self, bin_op: &BinaryOp) -> Result<i32, CellError> {
         let first = self.get_operand_value(&bin_op.first)?;
         let second = self.get_operand_value(&bin_op.second)?;
+        if first.abs() > 2_147_483_647 / second.abs() || second.abs() > 2_147_483_647 / first.abs()
+        {
+            return Err(CellError::Overflow);
+        }
         Ok(first * second)
     }
     /// Evaluates division operation
@@ -789,6 +797,7 @@ impl Backend {
                         CellError::NoError => Ok((*cell_data).value),
                         CellError::DivideByZero => Err(CellError::DivideByZero),
                         CellError::DependencyError => Err(CellError::DependencyError),
+                        CellError::Overflow => Err(CellError::Overflow),
                     }
                 }
             }
@@ -925,13 +934,11 @@ impl Backend {
                     (*cell_ptr).function = value.0.function;
                     (*cell_ptr).dirty_parents = value.0.dirty_parents;
                     self.formula_strings[row_idx][col_idx] = value.1.clone();
-                  
                 }
             }
         }
     }
 
-    
     #[cfg(feature = "gui")]
     /// Save current state to undo stack
     pub fn push_undo_state(&mut self) {
@@ -1112,7 +1119,7 @@ impl Backend {
         Ok(())
     }
     #[cfg(feature = "gui")]
-     /// Pastes the selected cells from the clipboard(copy stack) to a specified location
+    /// Pastes the selected cells from the clipboard(copy stack) to a specified location
     /// # Usage: paste(TopLeftCell)
     /// It pastes the values from the copy stack to the specified location
     /// If enough space is not available, it does not paste
@@ -1235,7 +1242,7 @@ impl Backend {
 
         Ok(())
     }
-    
+
     #[cfg(feature = "gui")]
     /// Loads a CSV string and populates the spreadsheet with its data
     pub fn load_csv_from_str(&mut self, data: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -1275,6 +1282,4 @@ impl Backend {
 
         Ok(())
     }
-   
 }
-

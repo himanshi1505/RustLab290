@@ -4,10 +4,10 @@ use yew::prelude::*;
 //use std::cell::UnsafeCell;
 use std::cell::RefCell;
 use std::rc::Rc;
-use web_sys::FileReader;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
+use web_sys::FileReader;
 //use gloo::file::callbacks::read_as_text;
 
 //use gloo::file::File;

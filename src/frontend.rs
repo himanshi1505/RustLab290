@@ -135,6 +135,16 @@ impl Frontend {
     /// Handles frontend commands like navigation, some gui extensions and output control.
     /// This function interprets commands entered by the user and performs the corresponding actions.
     /// It supports commands for scrolling, loading, saving, copying, cutting, pasting, and autofilling.
+    /// It also includes commands for enabling and disabling output.
+    /// #Usage:
+    /// - `disable_output`: Disables output to the console.
+    /// - `enable_output`: Enables output to the console.
+    /// - `q`: Exits the program.   
+    /// - `w`: Scrolls up.
+    /// - `s`: Scrolls down.
+    /// - `a`: Scrolls left.
+    /// - `d`: Scrolls right.
+    /// - `scroll_to <cell>`: Scrolls to a specific cell.
     fn run_frontend_command(&mut self, cmd: &str) -> bool {
         match cmd {
             "disable_output" => self.do_print = false,

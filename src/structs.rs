@@ -12,6 +12,7 @@ pub enum CellError {
     NoError,
     DivideByZero,
     DependencyError, // depends on cell which has div by zero
+    Overflow,
 }
 /// Represents the possible errors that can occur during expression parsing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,7 +20,6 @@ pub enum ExpressionError {
     CouldNotParse,
     CircularDependency,
 }
-
 
 ///Represents possible operand types: Cell or Int.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -111,7 +111,7 @@ impl Function {
             data: FunctionData::RangeFunction(range),
         }
     }
-     ///Creates a new binary Function instance with the given type and data.
+    ///Creates a new binary Function instance with the given type and data.
     pub fn new_binary_op(type_: FunctionType, op: BinaryOp) -> Self {
         assert!(matches!(
             type_,
