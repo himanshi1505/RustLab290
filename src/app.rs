@@ -38,7 +38,7 @@ struct ThemeColors {
     parent_cell_bg: &'static str,
     child_cell_bg: &'static str,
 }
-//// Implement methods to get colors based on the theme
+/// Implement methods to get colors based on the theme
 impl ThemeColors {
     fn light() -> Self {
         Self {
