@@ -48,6 +48,7 @@ Note: whenever you do a action in website click somewhere else to update the tri
 2. To run the website `trunk serve --no-default-features --features gui`.
 3. Port for website - 8080
 4. To open rustdoc: cargo doc --open
+5. pdflatex should be installed (has been used to make report.pdf from report.tex)
 
 ## Usage
 - Follow the on-screen instructions to create and manipulate spreadsheets.
