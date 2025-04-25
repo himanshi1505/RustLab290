@@ -34,9 +34,7 @@ pub struct Backend {
     #[cfg(feature = "gui")]
     /// String representations of formulas for display
     pub formula_strings: Vec<Vec<String>>,
-    #[cfg(feature = "gui")]
-    /// Current filename for save/load operations
-    pub filename: String,
+
     #[cfg(feature = "gui")]
     /// Clipboard storage for copy/paste operations
     pub copy_stack: Vec<Vec<i32>>,
@@ -144,8 +142,7 @@ impl Backend {
             cols,
             #[cfg(feature = "gui")]
             formula_strings: vec![vec!["=0".to_string(); cols]; rows],
-            #[cfg(feature = "gui")]
-            filename: "default.csv".to_string(),
+
             #[cfg(feature = "gui")]
             copy_stack: vec![vec![0; 1]; 1],
         }
@@ -763,10 +760,14 @@ impl Backend {
     pub fn multiply_op(&self, bin_op: &BinaryOp) -> Result<i32, CellError> {
         let first = self.get_operand_value(&bin_op.first)?;
         let second = self.get_operand_value(&bin_op.second)?;
-        if first.abs() > 2_147_483_647 / second.abs() || second.abs() > 2_147_483_647 / first.abs()
+        if first != 0
+            && second != 0
+            && (first.abs() > 2_147_483_647 / second.abs()
+                || second.abs() > 2_147_483_647 / first.abs())
         {
             return Err(CellError::Overflow);
         }
+
         Ok(first * second)
     }
     /// Evaluates division operation
@@ -1281,5 +1282,1368 @@ impl Backend {
         }
 
         Ok(())
+    }
+}
+#[cfg(feature = "cli")]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+    //use crate::structs::*;
+    //use crate::structs::FunctionType::Sleep;
+
+    #[test]
+    fn test_sleep_function_positive_value() {
+        let backend = Backend::new(3, 3);
+
+        // Set up an operand with a positive value
+        let operand = Operand {
+            type_: OperandType::Int,
+            data: OperandData::Value(2), // Sleep for 2 seconds
+        };
+
+        let start_time = Instant::now();
+        let result = backend.sleep_function(&operand);
+        let elapsed_time = start_time.elapsed();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 2);
+        assert!(elapsed_time.as_secs() >= 2); // Ensure at least 2 seconds have passed
+    }
+
+    #[test]
+    fn test_sleep_function_zero_value() {
+        let backend = Backend::new(3, 3);
+
+        // Set up an operand with a value of 0
+        let operand = Operand {
+            type_: OperandType::Int,
+            data: OperandData::Value(0), // No sleep
+        };
+
+        let start_time = Instant::now();
+        let result = backend.sleep_function(&operand);
+        let elapsed_time = start_time.elapsed();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+        assert!(elapsed_time.as_secs() < 1); // Ensure no significant delay
+    }
+
+    #[test]
+    fn test_sleep_function_negative_value() {
+        let backend = Backend::new(3, 3);
+
+        // Set up an operand with a negative value
+        let operand = Operand {
+            type_: OperandType::Int,
+            data: OperandData::Value(-5), // Negative value
+        };
+
+        let result = backend.sleep_function(&operand);
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), -5); // Negative values should not cause sleep
+    }
+
+    #[test]
+    fn test_new_backend() {
+        let backend = Backend::new(5, 5);
+        assert_eq!(backend.get_rows_col(), (5, 5));
+
+        let backend = Backend::new(0, 0);
+        assert_eq!(backend.get_rows_col(), (0, 0));
+
+        let backend = Backend::new(100, 100);
+        assert_eq!(backend.get_rows_col(), (100, 100));
+    }
+
+    #[test]
+    fn test_get_rows_col() {
+        let backend = Backend::new(3, 4);
+        assert_eq!(backend.get_rows_col(), (3, 4));
+
+        let backend = Backend::new(1, 1);
+        assert_eq!(backend.get_rows_col(), (1, 1));
+    }
+
+    #[test]
+    fn test_set_and_get_cell_value() {
+        let mut backend = Backend::new(3, 3);
+        let cell = Cell { row: 1, col: 1 };
+        let expression = "42";
+        backend.set_cell_value(cell, expression).unwrap();
+
+        unsafe {
+            let cell_data = backend.get_cell_value(1, 1);
+            assert_eq!((*cell_data).value, 42);
+        }
+    }
+
+    #[test]
+    fn test_set_cell_value_constant() {
+        // Lines 148, 150-152, 154-157
+        let mut backend = Backend::new(3, 3);
+        let cell = Cell { row: 1, col: 1 };
+        backend.set_cell_value(cell, "42").unwrap();
+
+        unsafe {
+            let cell_data = backend.get_cell_value(1, 1);
+            assert_eq!((*cell_data).value, 42);
+            assert_eq!((*cell_data).error, CellError::NoError);
+        }
+    }
+
+    #[test]
+    fn test_set_cell_value_circular_dependency() {
+        // Lines 159-161, 167-168
+        let mut backend = Backend::new(3, 3);
+        let cell = Cell { row: 0, col: 0 };
+        // backend.set_cell_value(cell, "=A1").unwrap();
+
+        let result = backend.set_cell_value(cell, "A1");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), ExpressionError::CircularDependency);
+    }
+    #[test]
+    fn test_update_graph_remove_dependencies() {
+        // Lines 171-174, 176-178
+        let mut backend = Backend::new(3, 3);
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "B1").unwrap();
+
+        let old_function = Function::new_constant(5);
+        backend.update_graph(&cell, &old_function);
+
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 0);
+            assert_eq!((*cell_data).value, 0); // Old dependencies removed
+        }
+    }
+
+    #[test]
+    fn test_update_graph_add_dependencies() {
+        // Lines 181-182, 185-186
+        let mut backend = Backend::new(3, 3);
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "B1").unwrap();
+
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 1);
+            assert_eq!((*cell_data).dependents.len(), 1); // New dependencies added
+        }
+    }
+
+    #[test]
+    fn test_min_function() {
+        let mut backend = Backend::new(3, 3);
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "10")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "20")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 2 }, "5")
+            .unwrap();
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 2 },
+        };
+        let result = backend.min_function(&range).unwrap();
+        assert_eq!(result, 5);
+    }
+
+    #[test]
+    fn test_reset_found() {
+        // Lines 190, 193
+        let mut backend = Backend::new(3, 3);
+        let start = Cell { row: 1, col: 1 };
+        backend.set_cell_value(start, "10").unwrap();
+
+        backend.reset_found(&start);
+
+        unsafe {
+            let cell_data = backend.get_cell_value(1, 1);
+            assert_eq!((*cell_data).dirty_parents, 0);
+        }
+    }
+
+    #[test]
+    fn test_check_circular_dependency() {
+        let mut backend = Backend::new(3, 3);
+        let cell_a = Cell { row: 0, col: 0 };
+        let cell_b = Cell { row: 0, col: 1 };
+
+        let _res1 = backend.set_cell_value(cell_a, "=B1");
+        let res = backend.set_cell_value(cell_b, "=A1");
+
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_multiply_op_overflow() {
+        let backend = Backend::new(3, 3);
+
+        // Set up operands that will cause overflow
+        let bin_op = BinaryOp {
+            first: Operand {
+                type_: OperandType::Int,
+                data: OperandData::Value(2_147_483_647), // Maximum i32 value
+            },
+            second: Operand {
+                type_: OperandType::Int,
+                data: OperandData::Value(2), // Multiplying by 2 will overflow
+            },
+        };
+
+        let result = backend.multiply_op(&bin_op);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::Overflow);
+    }
+
+    #[test]
+    fn test_divide_op_by_zero() {
+        let backend = Backend::new(3, 3);
+
+        // Set up operands where the second operand is zero
+        let bin_op = BinaryOp {
+            first: Operand {
+                type_: OperandType::Int,
+                data: OperandData::Value(42),
+            },
+            second: Operand {
+                type_: OperandType::Int,
+                data: OperandData::Value(0), // Division by zero
+            },
+        };
+
+        let result = backend.divide_op(&bin_op);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DivideByZero);
+    }
+
+    #[test]
+    fn test_set_dirty_parents() {
+        // Lines 221-226, 231-235
+        let mut backend = Backend::new(3, 3);
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "10").unwrap();
+
+        let mut stack = Vec::new();
+        backend.set_dirty_parents(&cell, &mut stack);
+
+        assert_eq!(stack.len(), 0);
+    }
+
+    #[test]
+    fn test_update_dependents() {
+        // Lines 237-240, 244-248
+        let mut backend = Backend::new(3, 3);
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "10").unwrap();
+
+        backend.update_dependents(&cell);
+
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 0);
+            assert_eq!((*cell_data).value, 10);
+        }
+    }
+
+    #[test]
+    fn test_evaluate_expression_binary_op() {
+        // Lines 257-262, 267-271
+        let backend = Backend::new(3, 3);
+        let func = Function::new_binary_op(
+            FunctionType::Plus,
+            BinaryOp {
+                first: Operand {
+                    type_: OperandType::Int,
+                    data: OperandData::Value(10),
+                },
+                second: Operand {
+                    type_: OperandType::Int,
+                    data: OperandData::Value(20),
+                },
+            },
+        );
+
+        let (value, error) = backend.evaluate_expression(&func);
+        assert_eq!(value, 30);
+        assert_eq!(error, CellError::NoError);
+    }
+
+    // #[test]
+    // fn test_min_function() {
+    //     // Lines 308, 311-312
+    //     let mut backend = Backend::new(3, 3);
+    //     backend.set_cell_value(Cell { row: 0, col: 0 }, "10").unwrap();
+    //     backend.set_cell_value(Cell { row: 0, col: 1 }, "20").unwrap();
+    //     backend.set_cell_value(Cell { row: 0, col: 2 }, "5").unwrap();
+
+    //     let range = RangeFunction {
+    //         top_left: Cell { row: 0, col: 0 },
+    //         bottom_right: Cell { row: 0, col: 2 },
+    //     };
+    //     let result = backend.min_function(&range).unwrap();
+    //     assert_eq!(result, 5);
+    // }
+
+    #[test]
+    fn test_max_function() {
+        let mut backend = Backend::new(3, 3);
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "10")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "20")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 2 }, "5")
+            .unwrap();
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 2 },
+        };
+        let result = backend.max_function(&range).unwrap();
+        assert_eq!(result, 20);
+
+        // Test with negative values
+        backend
+            .set_cell_value(Cell { row: 1, col: 0 }, "-10")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 1, col: 1 }, "-20")
+            .unwrap();
+        let range = RangeFunction {
+            top_left: Cell { row: 1, col: 0 },
+            bottom_right: Cell { row: 1, col: 1 },
+        };
+        let result = backend.max_function(&range).unwrap();
+        assert_eq!(result, -10);
+    }
+
+    #[test]
+    fn test_avg_function() {
+        let mut backend = Backend::new(3, 3);
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "10")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "20")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 2 }, "30")
+            .unwrap();
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 2 },
+        };
+        let result = backend.avg_function(&range).unwrap();
+        assert_eq!(result, 20);
+
+        // Test with zero values
+        backend
+            .set_cell_value(Cell { row: 1, col: 0 }, "0")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 1, col: 1 }, "0")
+            .unwrap();
+        let range = RangeFunction {
+            top_left: Cell { row: 1, col: 0 },
+            bottom_right: Cell { row: 1, col: 1 },
+        };
+        let result = backend.avg_function(&range).unwrap();
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_sum_function() {
+        let mut backend = Backend::new(3, 3);
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "10")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "20")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 2 }, "30")
+            .unwrap();
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 2 },
+        };
+        let result = backend.sum_function(&range).unwrap();
+        assert_eq!(result, 60);
+
+        // Test with negative values
+        backend
+            .set_cell_value(Cell { row: 1, col: 0 }, "-10")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 1, col: 1 }, "-20")
+            .unwrap();
+        let range = RangeFunction {
+            top_left: Cell { row: 1, col: 0 },
+            bottom_right: Cell { row: 1, col: 1 },
+        };
+        let result = backend.sum_function(&range).unwrap();
+        assert_eq!(result, -30);
+    }
+
+    #[test]
+    fn test_stdev_function() {
+        let mut backend = Backend::new(3, 3);
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "10")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "20")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 2 }, "30")
+            .unwrap();
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 2 },
+        };
+        let result = backend.stdev_function(&range).unwrap();
+        assert_eq!(result, 8); // Standard deviation of [10, 20, 30] is approximately 8.16, floored to 8
+
+        // Test with a single value
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 0 },
+        };
+        let result = backend.stdev_function(&range).unwrap();
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_plus_op() {
+        let mut backend = Backend::new(3, 3);
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "10")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "20")
+            .unwrap();
+
+        let bin_op = BinaryOp {
+            first: Operand {
+                type_: OperandType::Cell,
+                data: OperandData::Cell(Cell { row: 0, col: 0 }),
+            },
+            second: Operand {
+                type_: OperandType::Cell,
+                data: OperandData::Cell(Cell { row: 0, col: 1 }),
+            },
+        };
+        let result = backend.plus_op(&bin_op).unwrap();
+        assert_eq!(result, 30);
+
+        // Test with negative values
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "-10")
+            .unwrap();
+        let result = backend.plus_op(&bin_op).unwrap();
+        assert_eq!(result, 10);
+    }
+
+    #[test]
+    fn test_minus_op() {
+        let mut backend = Backend::new(3, 3);
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "20")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "10")
+            .unwrap();
+
+        let bin_op = BinaryOp {
+            first: Operand {
+                type_: OperandType::Cell,
+                data: OperandData::Cell(Cell { row: 0, col: 0 }),
+            },
+            second: Operand {
+                type_: OperandType::Cell,
+                data: OperandData::Cell(Cell { row: 0, col: 1 }),
+            },
+        };
+        let result = backend.minus_op(&bin_op).unwrap();
+        assert_eq!(result, 10);
+
+        // Test with negative values
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "-10")
+            .unwrap();
+        let result = backend.minus_op(&bin_op).unwrap();
+        assert_eq!(result, 30);
+    }
+
+    #[test]
+    fn test_multiply_op() {
+        let mut backend = Backend::new(3, 3);
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "5")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "4")
+            .unwrap();
+
+        let bin_op = BinaryOp {
+            first: Operand {
+                type_: OperandType::Cell,
+                data: OperandData::Cell(Cell { row: 0, col: 0 }),
+            },
+            second: Operand {
+                type_: OperandType::Cell,
+                data: OperandData::Cell(Cell { row: 0, col: 1 }),
+            },
+        };
+        let result = backend.multiply_op(&bin_op).unwrap();
+        assert_eq!(result, 20);
+
+        // Test with zero
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "0")
+            .unwrap();
+        let result = backend.multiply_op(&bin_op).unwrap();
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_divide_op() {
+        let mut backend = Backend::new(3, 3);
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "20")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "10")
+            .unwrap();
+
+        let bin_op = BinaryOp {
+            first: Operand {
+                type_: OperandType::Cell,
+                data: OperandData::Cell(Cell { row: 0, col: 0 }),
+            },
+            second: Operand {
+                type_: OperandType::Cell,
+                data: OperandData::Cell(Cell { row: 0, col: 1 }),
+            },
+        };
+        let result = backend.divide_op(&bin_op).unwrap();
+        assert_eq!(result, 2);
+
+        // Test division by zero
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "0")
+            .unwrap();
+        let result = backend.divide_op(&bin_op);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DivideByZero);
+    }
+
+    #[test]
+    fn test_get_operand_value() {
+        // Lines 466-469, 471
+        let mut backend = Backend::new(3, 3);
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "42")
+            .unwrap();
+
+        let operand = Operand {
+            type_: OperandType::Cell,
+            data: OperandData::Cell(Cell { row: 0, col: 0 }),
+        };
+
+        let result = backend.get_operand_value(&operand).unwrap();
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn test_get_rows() {
+        // Lines 707-708
+        let backend = Backend::new(3, 3);
+        assert_eq!(backend.get_rows(), 3);
+    }
+
+    #[test]
+    fn test_get_cols() {
+        // Lines 711
+        let backend = Backend::new(3, 3);
+        assert_eq!(backend.get_cols(), 3);
+    }
+
+    #[test]
+    fn test_update_graph_with_range_function() {
+        let mut backend = Backend::new(5, 5);
+        let cell = Cell { row: 2, col: 2 };
+
+        // Set the old function as a RangeFunction
+        let _old_function = Function::new_range_function(
+            FunctionType::Sum,
+            RangeFunction {
+                top_left: Cell { row: 0, col: 0 },
+                bottom_right: Cell { row: 1, col: 1 },
+            },
+        );
+
+        // Verify that the old dependencies are removed
+        unsafe {
+            for row in 0..=1 {
+                for col in 0..=1 {
+                    let parent_data = backend.get_cell_value(row, col);
+                    assert!(!(*parent_data).dependents.contains(&(2, 2)));
+                }
+            }
+        }
+
+        // Set the new function as a RangeFunction
+        backend.set_cell_value(cell, "SUM(A1:B2)").unwrap();
+
+        // Update the graph
+        // backend.update_graph(&cell, &old_function);
+
+        // Verify that the new dependencies are added
+        unsafe {
+            for row in 0..=1 {
+                for col in 0..=1 {
+                    let parent_data = backend.get_cell_value(row, col);
+                    assert!((*parent_data).dependents.contains(&(2, 2)));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_update_graph_with_binary_op() {
+        let mut backend = Backend::new(5, 5);
+        let cell = Cell { row: 2, col: 2 };
+
+        // Set the old function as a BinaryOp
+        let _old_function = Function::new_binary_op(
+            FunctionType::Plus,
+            BinaryOp {
+                first: Operand {
+                    type_: OperandType::Cell,
+                    data: OperandData::Cell(Cell { row: 0, col: 0 }),
+                },
+                second: Operand {
+                    type_: OperandType::Cell,
+                    data: OperandData::Cell(Cell { row: 1, col: 1 }),
+                },
+            },
+        );
+
+        // Verify that the old dependencies are removed
+        unsafe {
+            let parent_data = backend.get_cell_value(0, 0);
+            assert!(!(*parent_data).dependents.contains(&(2, 2)));
+
+            let parent_data = backend.get_cell_value(0, 1);
+            assert!(!(*parent_data).dependents.contains(&(2, 2)));
+        }
+
+        // Set the new function as a BinaryOp
+        backend.set_cell_value(cell, "A1+B1").unwrap();
+
+        // Update the graph
+        // backend.update_graph(&cell, &old_function);
+
+        // Verify that the new dependencies are added
+        unsafe {
+            let parent_data = backend.get_cell_value(0, 0);
+            assert!((*parent_data).dependents.contains(&(2, 2)));
+
+            let parent_data2 = backend.get_cell_value(0, 1);
+            assert!((*parent_data2).dependents.contains(&(2, 2)));
+        }
+    }
+
+    #[test]
+    fn test_update_graph_with_sleep_cell() {
+        let mut backend = Backend::new(5, 5);
+        let cell = Cell { row: 2, col: 2 };
+
+        // Set the old function as a SleepValue
+        let _old_function = Function {
+            type_: FunctionType::Sleep,
+            data: FunctionData::SleepValue(Operand {
+                type_: OperandType::Cell,
+                data: OperandData::Cell(Cell { row: 0, col: 0 }),
+            }),
+        };
+
+        // Verify that the old dependencies are removed
+        unsafe {
+            let parent_data = backend.get_cell_value(0, 0);
+            assert!(!(*parent_data).dependents.contains(&(2, 2)));
+        }
+
+        // Set the new function as a SleepValue
+        backend.set_cell_value(cell, "SLEEP(A1)").unwrap();
+
+        // Update the graph
+        // backend.update_graph(&cell, &old_function);
+
+        // Verify that the new dependencies are added
+        unsafe {
+            let parent_data = backend.get_cell_value(0, 0);
+            assert!((*parent_data).dependents.contains(&(2, 2)));
+        }
+    }
+
+    #[test]
+    fn test_update_graph_with_sleep_value() {
+        let mut backend = Backend::new(5, 5);
+        let cell = Cell { row: 2, col: 2 };
+
+        // Set the old function as a SleepValue
+        let _old_function = Function {
+            type_: FunctionType::Sleep,
+            data: FunctionData::SleepValue(Operand {
+                type_: OperandType::Int,
+                data: OperandData::Value(0),
+            }),
+        };
+
+        // Set the new function as a SleepValue
+        backend.set_cell_value(cell, "SLEEP(0)").unwrap();
+    }
+
+    #[test]
+    fn test_update_graph_with_cell_data_as_range_function() {
+        let mut backend = Backend::new(5, 5);
+        let cell = Cell { row: 2, col: 2 };
+
+        // Set the cell's function as a RangeFunction
+        backend.set_cell_value(cell, "SUM(A1:B2)").unwrap();
+
+        // Update the graph
+        // backend.update_graph(&cell, &Function::new_constant(0));
+
+        // Verify that the dependencies are added
+        unsafe {
+            for row in 0..=1 {
+                for col in 0..=1 {
+                    let parent_data = backend.get_cell_value(row, col);
+                    assert!((*parent_data).dependents.contains(&(2, 2)));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_operand_value_division_by_zero_error() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set a cell value to 0 to simulate division by zero
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "0").unwrap();
+
+        // Create an operand referencing the cell
+        let operand = Operand {
+            type_: OperandType::Cell,
+            data: OperandData::Cell(cell),
+        };
+
+        // Simulate a division by zero error
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 0);
+            (*cell_data).error = CellError::DivideByZero;
+        }
+
+        // Call get_operand_value and verify the error
+        let result = backend.get_operand_value(&operand);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DivideByZero);
+    }
+
+    #[test]
+    fn test_get_operand_value_dependency_error() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set a cell value to simulate a dependency error
+        let cell = Cell { row: 1, col: 1 };
+        backend.set_cell_value(cell, "42").unwrap();
+
+        // Create an operand referencing the cell
+        let operand = Operand {
+            type_: OperandType::Cell,
+            data: OperandData::Cell(cell),
+        };
+
+        // Simulate a dependency error
+        unsafe {
+            let cell_data = backend.get_cell_value(1, 1);
+            (*cell_data).error = CellError::DependencyError;
+        }
+
+        // Call get_operand_value and verify the error
+        let result = backend.get_operand_value(&operand);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DependencyError);
+    }
+
+    #[test]
+    fn test_sum_function_division_by_zero_error() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set a cell with a division by zero error
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "0").unwrap();
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 0);
+            (*cell_data).error = CellError::DivideByZero;
+        }
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 0 },
+        };
+
+        let result = backend.sum_function(&range);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DivideByZero);
+    }
+
+    #[test]
+    fn test_sum_function_dependency_error() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set a cell with a dependency error
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "42").unwrap();
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 0);
+            (*cell_data).error = CellError::DependencyError;
+        }
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 0 },
+        };
+
+        let result = backend.sum_function(&range);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DependencyError);
+    }
+
+    #[test]
+    fn test_stdev_function_division_by_zero_error() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set a cell with a division by zero error
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "0").unwrap();
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 0);
+            (*cell_data).error = CellError::DivideByZero;
+        }
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 0 },
+        };
+
+        let result = backend.stdev_function(&range);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DivideByZero);
+    }
+
+    #[test]
+    fn test_stdev_function_dependency_error() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set a cell with a dependency error
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "42").unwrap();
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 0);
+            (*cell_data).error = CellError::DependencyError;
+        }
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 0 },
+        };
+
+        let result = backend.stdev_function(&range);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DependencyError);
+    }
+
+    #[test]
+    fn test_avg_function_division_by_zero_error() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set a cell with a division by zero error
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "0").unwrap();
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 0);
+            (*cell_data).error = CellError::DivideByZero;
+        }
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 0 },
+        };
+
+        let result = backend.avg_function(&range);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DivideByZero);
+    }
+
+    #[test]
+    fn test_avg_function_dependency_error() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set a cell with a dependency error
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "42").unwrap();
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 0);
+            (*cell_data).error = CellError::DependencyError;
+        }
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 0 },
+        };
+
+        let result = backend.avg_function(&range);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DependencyError);
+    }
+
+    #[test]
+    fn test_max_function_division_by_zero_error() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set a cell with a division by zero error
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "0").unwrap();
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 0);
+            (*cell_data).error = CellError::DivideByZero;
+        }
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 0 },
+        };
+
+        let result = backend.max_function(&range);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DivideByZero);
+    }
+
+    #[test]
+    fn test_max_function_dependency_error() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set a cell with a dependency error
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "42").unwrap();
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 0);
+            (*cell_data).error = CellError::DependencyError;
+        }
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 0 },
+        };
+
+        let result = backend.max_function(&range);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DependencyError);
+    }
+
+    #[test]
+    fn test_min_function_division_by_zero_error() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set a cell with a division by zero error
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "0").unwrap();
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 0);
+            (*cell_data).error = CellError::DivideByZero;
+        }
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 0 },
+        };
+
+        let result = backend.min_function(&range);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DivideByZero);
+    }
+
+    #[test]
+    fn test_min_function_dependency_error() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set a cell with a dependency error
+        let cell = Cell { row: 0, col: 0 };
+        backend.set_cell_value(cell, "42").unwrap();
+        unsafe {
+            let cell_data = backend.get_cell_value(0, 0);
+            (*cell_data).error = CellError::DependencyError;
+        }
+
+        let range = RangeFunction {
+            top_left: Cell { row: 0, col: 0 },
+            bottom_right: Cell { row: 0, col: 0 },
+        };
+
+        let result = backend.min_function(&range);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), CellError::DependencyError);
+    }
+
+    #[test]
+    fn test_evaluate_expression_minus() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set up operands
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "20")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "10")
+            .unwrap();
+
+        // Create a minus function
+        let func = Function::new_binary_op(
+            FunctionType::Minus,
+            BinaryOp {
+                first: Operand {
+                    type_: OperandType::Cell,
+                    data: OperandData::Cell(Cell { row: 0, col: 0 }),
+                },
+                second: Operand {
+                    type_: OperandType::Cell,
+                    data: OperandData::Cell(Cell { row: 0, col: 1 }),
+                },
+            },
+        );
+
+        // Evaluate the function
+        let (value, error) = backend.evaluate_expression(&func);
+        assert_eq!(value, 10);
+        assert_eq!(error, CellError::NoError);
+    }
+
+    #[test]
+    fn test_evaluate_expression_multiply() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set up operands
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "5")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "4")
+            .unwrap();
+
+        // Create a multiply function
+        let func = Function::new_binary_op(
+            FunctionType::Multiply,
+            BinaryOp {
+                first: Operand {
+                    type_: OperandType::Cell,
+                    data: OperandData::Cell(Cell { row: 0, col: 0 }),
+                },
+                second: Operand {
+                    type_: OperandType::Cell,
+                    data: OperandData::Cell(Cell { row: 0, col: 1 }),
+                },
+            },
+        );
+
+        // Evaluate the function
+        let (value, error) = backend.evaluate_expression(&func);
+        assert_eq!(value, 20);
+        assert_eq!(error, CellError::NoError);
+    }
+
+    #[test]
+    fn test_evaluate_expression_divide() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set up operands
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "20")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "10")
+            .unwrap();
+
+        // Create a divide function
+        let func = Function::new_binary_op(
+            FunctionType::Divide,
+            BinaryOp {
+                first: Operand {
+                    type_: OperandType::Cell,
+                    data: OperandData::Cell(Cell { row: 0, col: 0 }),
+                },
+                second: Operand {
+                    type_: OperandType::Cell,
+                    data: OperandData::Cell(Cell { row: 0, col: 1 }),
+                },
+            },
+        );
+
+        // Evaluate the function
+        let (value, error) = backend.evaluate_expression(&func);
+        assert_eq!(value, 2);
+        assert_eq!(error, CellError::NoError);
+    }
+
+    #[test]
+    fn test_evaluate_expression_min() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set up range values
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "10")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "20")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 2 }, "5")
+            .unwrap();
+
+        // Create a min function
+        let func = Function::new_range_function(
+            FunctionType::Min,
+            RangeFunction {
+                top_left: Cell { row: 0, col: 0 },
+                bottom_right: Cell { row: 0, col: 2 },
+            },
+        );
+
+        // Evaluate the function
+        let (value, error) = backend.evaluate_expression(&func);
+        assert_eq!(value, 5);
+        assert_eq!(error, CellError::NoError);
+    }
+
+    #[test]
+    fn test_evaluate_expression_max() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set up range values
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "10")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "20")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 2 }, "5")
+            .unwrap();
+
+        // Create a max function
+        let func = Function::new_range_function(
+            FunctionType::Max,
+            RangeFunction {
+                top_left: Cell { row: 0, col: 0 },
+                bottom_right: Cell { row: 0, col: 2 },
+            },
+        );
+
+        // Evaluate the function
+        let (value, error) = backend.evaluate_expression(&func);
+        assert_eq!(value, 20);
+        assert_eq!(error, CellError::NoError);
+    }
+
+    #[test]
+    fn test_evaluate_expression_avg() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set up range values
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "10")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "20")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 2 }, "30")
+            .unwrap();
+
+        // Create an avg function
+        let func = Function::new_range_function(
+            FunctionType::Avg,
+            RangeFunction {
+                top_left: Cell { row: 0, col: 0 },
+                bottom_right: Cell { row: 0, col: 2 },
+            },
+        );
+
+        // Evaluate the function
+        let (value, error) = backend.evaluate_expression(&func);
+        assert_eq!(value, 20);
+        assert_eq!(error, CellError::NoError);
+    }
+
+    #[test]
+    fn test_evaluate_expression_stdev() {
+        let mut backend = Backend::new(3, 3);
+
+        // Set up range values
+        backend
+            .set_cell_value(Cell { row: 0, col: 0 }, "10")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 1 }, "20")
+            .unwrap();
+        backend
+            .set_cell_value(Cell { row: 0, col: 2 }, "30")
+            .unwrap();
+
+        // Create a stdev function
+        let func = Function::new_range_function(
+            FunctionType::Stdev,
+            RangeFunction {
+                top_left: Cell { row: 0, col: 0 },
+                bottom_right: Cell { row: 0, col: 2 },
+            },
+        );
+
+        // Evaluate the function
+        let (value, error) = backend.evaluate_expression(&func);
+        assert_eq!(value, 8); // Standard deviation of [10, 20, 30] is approximately 8.16, floored to 8
+        assert_eq!(error, CellError::NoError);
+    }
+
+    #[test]
+    fn test_update_graph_with_range_function2() {
+        let mut backend = Backend::new(5, 5);
+        let cell = Cell { row: 2, col: 2 };
+
+        // Set the old function as a RangeFunction
+        let old_function = Function::new_range_function(
+            FunctionType::Sum,
+            RangeFunction {
+                top_left: Cell { row: 0, col: 0 },
+                bottom_right: Cell { row: 1, col: 1 },
+            },
+        );
+        // Verify that the old dependencies are removed
+        unsafe {
+            for row in 0..=1 {
+                for col in 0..=1 {
+                    let parent_data = backend.get_cell_value(row, col);
+                    assert!(!(*parent_data).dependents.contains(&(2, 2)));
+                }
+            }
+        }
+
+        // Set the new function as a RangeFunction
+        backend.set_cell_value(cell, "SUM(A1:B2)").unwrap();
+
+        // Update the graph
+        backend.update_graph(&cell, &old_function);
+
+        // Verify that the new dependencies are added
+        unsafe {
+            for row in 0..=1 {
+                for col in 0..=1 {
+                    let parent_data = backend.get_cell_value(row, col);
+                    assert!((*parent_data).dependents.contains(&(2, 2)));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_update_graph_with_binary_op2() {
+        let mut backend = Backend::new(5, 5);
+        let cell = Cell { row: 2, col: 2 };
+
+        // Set the old function as a BinaryOp
+        let old_function = Function::new_binary_op(
+            FunctionType::Plus,
+            BinaryOp {
+                first: Operand {
+                    type_: OperandType::Cell,
+                    data: OperandData::Cell(Cell { row: 0, col: 0 }),
+                },
+                second: Operand {
+                    type_: OperandType::Cell,
+                    data: OperandData::Cell(Cell { row: 1, col: 1 }),
+                },
+            },
+        );
+        // Verify that the old dependencies are removed
+        unsafe {
+            let parent_data = backend.get_cell_value(0, 0);
+            assert!(!(*parent_data).dependents.contains(&(2, 2)));
+
+            let parent_data = backend.get_cell_value(1, 1);
+            assert!(!(*parent_data).dependents.contains(&(2, 2)));
+        }
+
+        // Set the new function as a BinaryOp
+        backend.set_cell_value(cell, "A1+B2").unwrap();
+
+        // Update the graph
+        backend.update_graph(&cell, &old_function);
+
+        // Verify that the new dependencies are added
+        unsafe {
+            let parent_data = backend.get_cell_value(0, 0);
+            assert!((*parent_data).dependents.contains(&(2, 2)));
+
+            let parent_data = backend.get_cell_value(1, 1);
+            assert!((*parent_data).dependents.contains(&(2, 2)));
+        }
+    }
+
+    #[test]
+    fn test_update_graph_with_sleep_value2() {
+        let mut backend = Backend::new(5, 5);
+        let cell = Cell { row: 2, col: 2 };
+
+        // Set the old function as a SleepValue
+        let old_function = Function {
+            type_: FunctionType::Sleep,
+            data: FunctionData::SleepValue(Operand {
+                type_: OperandType::Cell,
+                data: OperandData::Cell(Cell { row: 0, col: 0 }),
+            }),
+        };
+        // Verify that the old dependencies are removed
+        unsafe {
+            let parent_data = backend.get_cell_value(0, 0);
+            assert!(!(*parent_data).dependents.contains(&(2, 2)));
+        }
+
+        // Set the new function as a SleepValue
+        backend.set_cell_value(cell, "SLEEP(A1)").unwrap();
+
+        // Update the graph
+        backend.update_graph(&cell, &old_function);
+
+        // Verify that the new dependencies are added
+        unsafe {
+            let parent_data = backend.get_cell_value(0, 0);
+            assert!((*parent_data).dependents.contains(&(2, 2)));
+        }
     }
 }

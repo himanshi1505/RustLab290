@@ -13,7 +13,7 @@ This project is a spreadsheet Program which can be run using terminal or using w
 - `frontend.rs`: Handles the user interface and interactions.
 - `backend.rs`: Manages the backend logic and data processing.
 - `parser.rs`: Parses input data and commands.
-- `structs.rs`: Defines the mathematical operations used in the project.
+- `structs.rs`: Defines the structs used in the project.
 - `main_gui.rs`: The entry point of website(gui) application
 -  `app.rs`: Root Yew component for gui (manages state).
 - `README.md`: This file, providing an overview of the project.
@@ -25,14 +25,14 @@ This project is a spreadsheet Program which can be run using terminal or using w
 - Cell referencing and formula evaluation.
 - Sleep, enable and disable display, scroll_to , a ,w ,s ,d to navigate.
 ## Website features and Usage
-- Tab Bar - undo redo save load light and dark theme tabs
+- Tab Bar - undo, redo, save, load, light and dark theme tabs
 - Formula Bar - shows formula of the slected cell
 - Grid with scroll bars - shows values
 - Command Bar with status message 
 - Terminal features
 - Themes dark and light - click on theme tab buttons
-- Coloured selected cell,immeidate parent and children
-- Cut copy paste of a range - cut(A1:A3), copy(A1:A4), paste(B1)
+- Coloured selected cell,immediate parent and children
+- Cut copy paste of a range - cut(A1:A3), copy(A1:A4), paste(B1), for single cell - cut(A1:A1), copy(A1:A1)
 - Autofill  - autofill(A1:A2, A4)
 - Sort in ascending order - sorta(A1:A5)
 - Sort in descending order - sortd(A1:A5)

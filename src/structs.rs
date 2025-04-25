@@ -133,13 +133,23 @@ impl Function {
             data: FunctionData::Value(value),
         }
     }
-    /// Creates a new sleep Function instance with the given type and data.
+    /// Creates a new sleep Function(for value) instance with the given type and data.
     pub fn new_sleep(value: i32) -> Self {
         Function {
             type_: FunctionType::Sleep,
             data: FunctionData::SleepValue(Operand {
                 type_: OperandType::Int,
                 data: OperandData::Value(value),
+            }),
+        }
+    }
+    /// Creates a new sleep(for cell reference )function instance with the given type and data.
+    pub fn new_sleep_cell(cell: Cell) -> Self {
+        Function {
+            type_: FunctionType::Sleep,
+            data: FunctionData::SleepValue(Operand {
+                type_: OperandType::Cell,
+                data: OperandData::Cell(cell),
             }),
         }
     }

@@ -387,10 +387,9 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
                         Some(cell) => cell,
                         None => return (Function::new_constant(0), false),
                     };
-                unsafe {
-                    let val = backend.get_cell_value(cell.row, cell.col);
-                    return (Function::new_sleep((*val).value), true);
-                }
+
+                //let val = backend.get_cell_value(cell.row, cell.col);
+                return (Function::new_sleep_cell(cell), true);
             }
         }
     }
@@ -464,5 +463,234 @@ pub fn parse_expression(expression: &str, backend: &Backend) -> (Function, bool)
                 success,
             )
         }
+    }
+}
+#[cfg(feature = "cli")]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::Backend;
+    use crate::structs::{
+        Cell, Function, FunctionType, Operand, OperandData, OperandType, RangeFunction,
+    };
+
+    #[test]
+    fn test_parse_cell_reference_valid() {
+        let rows = 10;
+        let cols = 26;
+
+        assert_eq!(
+            parse_cell_reference("A1", rows, cols),
+            Some(Cell { row: 0, col: 0 })
+        );
+        assert_eq!(
+            parse_cell_reference("B2", rows, cols),
+            Some(Cell { row: 1, col: 1 })
+        );
+        assert_eq!(
+            parse_cell_reference("Z10", rows, cols),
+            Some(Cell { row: 9, col: 25 })
+        );
+    }
+
+    #[test]
+    fn test_parse_cell_reference_invalid() {
+        let rows = 10;
+        let cols = 10;
+
+        assert_eq!(parse_cell_reference("1A", rows, cols), None); // Invalid format
+        assert_eq!(parse_cell_reference("AA", rows, cols), None); // Missing row
+        assert_eq!(parse_cell_reference("A11", rows, cols), None); // Out of bounds
+        assert_eq!(parse_cell_reference("", rows, cols), None); // Empty string
+    }
+
+    #[test]
+    fn test_parse_binary_op_valid() {
+        let backend = Backend::new(10, 10);
+        let mut success = false;
+
+        let binary_op = parse_binary_op("A1", "42", &backend, &mut success);
+        assert!(success);
+        assert_eq!(
+            binary_op.first,
+            Operand {
+                type_: OperandType::Cell,
+                data: OperandData::Cell(Cell { row: 0, col: 0 }),
+            }
+        );
+        assert_eq!(
+            binary_op.second,
+            Operand {
+                type_: OperandType::Int,
+                data: OperandData::Value(42),
+            }
+        );
+
+        let binary_op = parse_binary_op("10", "20", &backend, &mut success);
+        assert!(success);
+        assert_eq!(
+            binary_op.first,
+            Operand {
+                type_: OperandType::Int,
+                data: OperandData::Value(10),
+            }
+        );
+        assert_eq!(
+            binary_op.second,
+            Operand {
+                type_: OperandType::Int,
+                data: OperandData::Value(20),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_binary_op_invalid() {
+        let backend = Backend::new(10, 10);
+        let mut success = false;
+
+        let binary_op = parse_binary_op("Invalid", "42", &backend, &mut success);
+        assert!(!success);
+        assert_eq!(
+            binary_op.first,
+            Operand {
+                type_: OperandType::Int,
+                data: OperandData::Value(0),
+            }
+        );
+
+        let binary_op = parse_binary_op("A1", "Invalid", &backend, &mut success);
+        assert!(!success);
+        assert_eq!(
+            binary_op.second,
+            Operand {
+                type_: OperandType::Int,
+                data: OperandData::Value(0),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_range_function_valid() {
+        let backend = Backend::new(10, 10);
+
+        let (function, success) = parse_range_function("SUM(A1:B2)", FunctionType::Sum, &backend);
+        assert!(success);
+        assert_eq!(
+            function.data,
+            Function::new_range_function(
+                FunctionType::Sum,
+                RangeFunction {
+                    top_left: Cell { row: 0, col: 0 },
+                    bottom_right: Cell { row: 1, col: 1 },
+                }
+            )
+            .data
+        );
+
+        let (function, success) = parse_range_function("AVG(A1:A10)", FunctionType::Avg, &backend);
+        assert!(success);
+        assert_eq!(
+            function.data,
+            Function::new_range_function(
+                FunctionType::Avg,
+                RangeFunction {
+                    top_left: Cell { row: 0, col: 0 },
+                    bottom_right: Cell { row: 9, col: 0 },
+                }
+            )
+            .data
+        );
+    }
+
+    #[test]
+    fn test_parse_range_function_invalid() {
+        let backend = Backend::new(10, 10);
+
+        let (function, success) =
+            parse_range_function("SUM(A1:Invalid)", FunctionType::Sum, &backend);
+        assert!(!success);
+        assert_eq!(function.data, Function::new_constant(0).data);
+
+        let (function, success) = parse_range_function("SUM(A1:A11)", FunctionType::Sum, &backend);
+        assert!(!success);
+        assert_eq!(function.data, Function::new_constant(0).data);
+
+        let (function, success) =
+            parse_range_function("SUM(A1:B1:C1)", FunctionType::Sum, &backend);
+        assert!(!success);
+        assert_eq!(function.data, Function::new_constant(0).data);
+    }
+
+    #[test]
+    fn test_parse_expression_constant() {
+        let backend = Backend::new(10, 10);
+
+        let (function, success) = parse_expression("42", &backend);
+        assert!(success);
+        assert_eq!(function.data, Function::new_constant(42).data);
+
+        let (function, success) = parse_expression("-42", &backend);
+        assert!(success);
+        assert_eq!(function.data, Function::new_constant(-42).data);
+    }
+
+    #[test]
+    fn test_parse_expression_cell_reference() {
+        let backend = Backend::new(10, 10);
+
+        let (function, success) = parse_expression("A1", &backend);
+        assert!(success);
+        assert_eq!(
+            function.data,
+            Function::new_binary_op(
+                FunctionType::Plus,
+                BinaryOp {
+                    first: Operand {
+                        type_: OperandType::Cell,
+                        data: OperandData::Cell(Cell { row: 0, col: 0 }),
+                    },
+                    second: Operand {
+                        type_: OperandType::Int,
+                        data: OperandData::Value(0),
+                    },
+                }
+            )
+            .data
+        );
+    }
+
+    #[test]
+    fn test_parse_expression_binary_op() {
+        let backend = Backend::new(10, 10);
+
+        let (function, success) = parse_expression("A1+42", &backend);
+        assert!(success);
+        assert_eq!(
+            function.data,
+            Function::new_binary_op(
+                FunctionType::Plus,
+                BinaryOp {
+                    first: Operand {
+                        type_: OperandType::Cell,
+                        data: OperandData::Cell(Cell { row: 0, col: 0 }),
+                    },
+                    second: Operand {
+                        type_: OperandType::Int,
+                        data: OperandData::Value(42),
+                    },
+                }
+            )
+            .data
+        );
+    }
+
+    #[test]
+    fn test_parse_expression_invalid() {
+        let backend = Backend::new(10, 10);
+
+        let (function, success) = parse_expression("Invalid", &backend);
+        assert!(!success);
+        assert_eq!(function.data, Function::new_constant(0).data);
     }
 }
