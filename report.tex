@@ -1,0 +1,335 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage[utf8]{inputenc} % Added for Unicode support
+\usepackage{textcomp} % Added for additional symbols
+\usepackage{listings} % Added for better code handling
+
+\title{Documentation Questions}
+\author{Dhruv Pawar \and Himanshi Bhandari \and Eshita Zjigyasu}
+
+\date{25th April 2025}
+
+\begin{document}
+
+\maketitle
+
+\section*{Why were the proposed extensions not implemented}
+
+The primary limitation we encountered was that our backend logic, developed during the C Lab, was already highly robust and tightly coupled. Implementing any major extensions would have required significant modifications to this backend, making the process labor-intensive and potentially necessitating a complete overhaul of the existing logic.
+
+As a result, we decided not to implement certain proposed extensions, including:
+\begin{itemize}
+    \item Database integration
+    \item Filtering functionality
+    \item Conditional statements
+    \item Support for floating-point numbers
+\end{itemize}
+
+\section*{Could we implement extra extensions over and above the proposal?}
+
+Yes, we were able to implement a few additional features beyond the original proposal. These include:
+
+\begin{itemize}
+    \item Light and dark theme support for improved user interface customization
+    \item Color-based cell dependency tracking, which visually distinguishes parent and child cell relationships
+\end{itemize}
+
+\section*{Primary Data Structures Used}
+
+\begin{enumerate}
+   
+
+    \item \textbf{\texttt{VecDeque}}
+    \begin{itemize}
+        \item \textbf{Usage}: \texttt{undo\_stack} and \texttt{redo\_stack}
+        \item \textbf{Application}: Acts as stacks to store snapshots of the grid for undo/redo functionality.
+        \begin{itemize}
+            \item \texttt{undo\_stack}: Stores previous states of the grid.
+            \item \texttt{redo\_stack}: Stores states undone by the user for redoing.
+        \end{itemize}
+        \item \textbf{Reason for \texttt{VecDeque}}: Efficient push and pop operations from both ends.
+    \end{itemize}
+
+    \item \textbf{\texttt{Vec}}
+    \begin{itemize}
+        \item \textbf{Usage}:
+        \begin{itemize}
+            \item \texttt{grid}: The 2D spreadsheet grid.
+            \item \texttt{formula\_strings}: Stores user-entered formulas.
+            \item \texttt{copy\_stack}: Temporary storage during copy/cut operations.
+            \item \texttt{dependents} (within \texttt{CellData}): Tracks dependent cells.
+            \item \texttt{dirty\_stack} and \texttt{process\_stack}: Used for topological sorting and dependency resolution.
+            \item \texttt{csv\_data}: Temporary storage for CSV import/export.
+        \end{itemize}
+        \item \textbf{Application}: Provides dynamic resizing and efficient indexing.
+    \end{itemize}
+
+
+   
+    \item \textbf{Stack} (Implemented using \texttt{Vec})
+    \begin{itemize}
+        \item \textbf{Usage}:
+        \begin{itemize}
+            \item \texttt{stack} in \texttt{reset\_found}
+            \item \texttt{dirty\_stack} in \texttt{set\_dirty\_parents}
+            \item \texttt{process\_stack} in \texttt{update\_dependents}
+        \end{itemize}
+        \item \textbf{Application}: Used for depth-first traversal, topological sorting, and cycle detection.
+    \end{itemize}
+ \item \textbf{\texttt{UnsafeCell}}
+    \begin{itemize}
+        \item \textbf{Usage}: \texttt{grid: UnsafeCell<Vec<Vec<CellData>>>}
+        \item \textbf{Application}: Enables interior mutability for the 2D grid of cells, allowing mutable access even when the \texttt{Backend} instance is immutable. This facilitates efficient updates to cell values and their dependencies.
+    \end{itemize}
+    \item \textbf{\texttt{String}}
+    \begin{itemize}
+        \item \textbf{Usage}:
+        \begin{itemize}
+            \item \texttt{filename}: Stores the filename for CSV import/export.
+            \item \texttt{formula\_strings}: Contains user-entered formulas.
+        \end{itemize}
+        \item \textbf{Application}: Manages textual data such as formulas and CSV content.
+    \end{itemize}
+
+    \item \textbf{\texttt{Tuple}}
+    \begin{itemize}
+        \item \textbf{Usage}:
+        \begin{itemize}
+            \item \texttt{(usize, usize)}: Represents cell coordinates.
+            \item \texttt{(i32, CellError, Vec<(i32, i32)>)}: Captures a snapshot of a cell's state.
+        \end{itemize}
+        \item \textbf{Application}: Efficiently groups related data.
+    \end{itemize}
+
+    \item \textbf{\texttt{Range}}
+    \begin{itemize}
+        \item \textbf{Usage}: Used in loops to iterate over rectangular ranges of cells.
+        \item \textbf{Application}: Facilitates implementation of range functions like \texttt{SUM}, \texttt{AVG}, \texttt{MIN}, and \texttt{MAX}.
+    \end{itemize}
+\end{enumerate}
+
+\subsection*{Summary}
+The \texttt{Backend} struct employs a variety of data structures to manage the spreadsheet's grid, dependencies, and operations effectively. Key design highlights include:
+\begin{itemize}
+    \item \textbf{Undo/Redo}: Enabled through \texttt{VecDeque} for efficient history management.
+    \item \textbf{Dependency Graph}: Managed using \texttt{Vec} and stack-based processing.
+    \item \textbf{CSV Import/Export}: Relies on \texttt{Vec} and \texttt{String} for temporary data storage.
+   
+\end{itemize}
+\section*{Interfaces Between Software Modules}
+An interface in software defines how different modules (components, services, or layers) communicate and interact. It specifies:
+\begin{itemize}
+    \item What data can be exchanged
+    \item What operations can be performed
+    \item How modules should interact
+\end{itemize}
+
+In our spreadsheet application, interfaces ensure that both the terminal and GUI versions work seamlessly by maintaining a consistent structure and communication between frontend and backend logic.
+
+\subsection*{1. Application Workflow Overview}
+We maintained the original design of the terminal version and extended it by adding GUI-specific modules, ensuring minimal disruption. This modularity enabled reusability of core logic (frontend, parser, backend) across both interfaces.
+
+\textbf{Limitations faced:}
+\begin{itemize}
+    \item We did not support float values (decimal precision) as originally proposed.
+    \item We realized that implementing \texttt{if-else} would require an abstract syntax tree (AST) for conditionals, so it was excluded.
+\end{itemize}
+
+\textbf{Module Workflow:}
+\begin{lstlisting}
+main.rs
++-- cli.rs -> frontend.rs -> parser.rs -> backend.rs   (Terminal mode)
++-- main_gui/
+    +-- app.rs -> frontend.rs -> parser.rs -> backend.rs   (GUI mode)
+    +-- index.html
+    +-- styles.css
+\end{lstlisting}
+
+\textbf{Workflow Explained:}
+\begin{itemize}
+    \item \textbf{main.rs:} Entry point. Based on CLI/GUI flag, calls either \texttt{cli.rs} or \texttt{main\_gui.rs}.
+    \item \textbf{cli.rs:} Handles terminal input/output. Sends expressions to \texttt{frontend.rs}.
+    \item \textbf{frontend.rs:} Shared logic. Parses input and sends it to \texttt{backend.rs}.
+    \item \textbf{parser.rs:} Converts text into structured AST.
+    \item \textbf{backend.rs:} Evaluates AST using spreadsheet data.
+    \item \textbf{main\_gui/:} Web interface using Yew/WASM. \texttt{app.rs} manages UI, calls shared \texttt{frontend.rs}.
+\end{itemize}
+
+\subsection*{2. Frontend-Backend Interface}
+\textbf{Purpose:} Connects the UI (Yew) with the Rust backend to handle user interactions and updates.
+
+\textbf{Components:}
+\begin{itemize}
+    \item \texttt{GridProps}, \texttt{FormulaBarProps}, \texttt{CommandBarProps}: Define communication between UI components.
+    \item \texttt{UseStateHandle<Rc<RefCell<Frontend>>>}: Shared state for backend access.
+\end{itemize}
+
+\textbf{Example Workflow:}
+\begin{itemize}
+    \item User selects a cell → state updates in frontend.
+    \item Backend recalculates dependent cells.
+    \item Grid refreshes with updated values.
+\end{itemize}
+
+\subsection*{3. File I/O Interface}
+\textbf{Purpose:} Allows saving and loading spreadsheets.
+
+\textbf{Components:}
+\begin{itemize}
+    \item \texttt{to\_csv\_string()}: Backend to CSV string.
+    \item \texttt{load\_csv\_from\_str()}: CSV to backend.
+    \item \texttt{download\_csv()}: Triggers browser download.
+\end{itemize}
+
+\textbf{Example Workflow:}
+\begin{itemize}
+    \item User clicks Save → \texttt{to\_csv\_string()} → \texttt{download\_csv()}.
+    \item User loads file → \texttt{load\_csv\_from\_str()} updates backend.
+\end{itemize}
+
+\subsection*{4. Cell Data Interface}
+\textbf{Purpose:} Synchronizes visual and logical cell data.
+
+\textbf{Components:}
+\begin{itemize}
+    \item \texttt{Cell} struct: stores cell state and formulas.
+    \item \texttt{get\_cell\_value()} / \texttt{set\_cell\_value()}: Safe accessor methods.
+\end{itemize}
+
+\textbf{Example Workflow:}
+\begin{itemize}
+    \item User edits a cell → \texttt{set\_cell\_value()} → recalculation.
+    \item UI updated via \texttt{get\_cell\_value()}.
+\end{itemize}
+
+\subsection*{Why Are Interfaces Important?}
+\begin{itemize}
+    \item \textbf{Separation of Concerns:} UI and logic stay decoupled.
+    \item \textbf{Maintainability:} Modules can evolve independently.
+    \item \textbf{Testability:} Each module is independently testable.
+    \item \textbf{Scalability:} Future features (e.g., undo/redo) are easy to integrate.
+\end{itemize}
+
+\section*{Approaches for Encapsulation}
+
+Encapsulation is achieved in our project by organizing code into modular components and exposing only the necessary interfaces between them. While certain modules like \texttt{structs.rs} are openly shared, most logic-heavy components follow encapsulation principles to ensure maintainability, testability, and clean separation of concerns.
+
+\subsection*{1. Central Data Structs: \texttt{structs.rs}}
+All data structures such as \texttt{Cell}, \texttt{Spreadsheet}, and \texttt{Function} are defined in \texttt{structs.rs}, and \textbf{all fields are public}.
+\begin{itemize}
+    \item \textbf{Impact}: This allows for easy sharing across modules but reduces strict encapsulation. Any module can directly modify internal state, which may lead to tight coupling or hard-to-trace bugs.
+    \item \textbf{Opportunity}: In the future, we can make fields private and expose only required getters/setters.
+\end{itemize}
+
+\subsection*{2. Logic Encapsulation: \texttt{backend.rs}}
+The backend is the core engine that evaluates expressions, tracks dependencies, and updates cell values.
+\begin{itemize}
+    \item The backend provides \textbf{getter and setter methods}, ensuring other modules (like \texttt{app.rs}) interact with it through a \textbf{defined interface} rather than direct manipulation.
+    \item Internally, \texttt{backend.rs} handles all vector and matrix operations (from \texttt{vec.rs}) and maintains dependency logic, keeping this complexity hidden from the frontend or parser.
+\end{itemize}
+
+\subsection*{3. Parsing as a Standalone Service: \texttt{parser.rs}}
+The parser is fully decoupled from the backend and GUI. It processes expressions like \texttt{=SUM(A1:B3)} and returns them as \texttt{Function} AST objects.
+\begin{itemize}
+    \item The returned \texttt{Function} object is then passed to the backend for evaluation.
+    \item This separation of concerns follows good encapsulation: \textbf{parsing and execution are isolated}.
+\end{itemize}
+
+\subsection*{4. Web Frontend Encapsulation: \texttt{app.rs} (Yew)}
+The Yew-based frontend is implemented entirely in \texttt{app.rs}. It handles UI rendering, user input, and calls backend methods in response to events.
+\begin{itemize}
+    \item The frontend does \textbf{not directly access backend data structures}, but uses \textbf{function calls} to update or retrieve state.
+    \item This interface acts as a layer of encapsulation between the user interaction layer and the core logic.
+\end{itemize}
+
+\subsection*{Summary of Encapsulation Approaches Used}
+
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Module} & \textbf{Encapsulation Approach} \\
+\hline
+\texttt{structs.rs} & Shared types across modules; fields currently public \\
+\texttt{backend.rs} & Getter/setter interface; internal logic hidden \\
+\texttt{parser.rs} & Stateless; returns parsed ASTs to backend \\
+\texttt{app.rs} & Uses function calls to backend; encapsulates UI logic \\
+\texttt{vec.rs} & Internal helper module; used only within backend \\
+\hline
+\end{tabular}
+
+\section*{Why This Is a Good Design}
+
+Our design choices reflect a deliberate balance between performance, clarity, modularity, and future extensibility. Below, we justify why the current structure serves the project well.
+
+\subsection*{1. Clear Abstraction of Spreadsheet Concepts}
+
+We introduced custom types like \texttt{Cell}, \texttt{CellData}, \texttt{Function}, and \texttt{Operand} to model spreadsheet concepts directly in code. These abstractions:
+\begin{itemize}
+    \item Make the system easier to reason about and debug.
+    \item Prevent logical errors by enforcing type safety.
+    \item Allow extension (e.g., new function types) without affecting unrelated modules.
+\end{itemize}
+
+\subsection*{2. Efficient and Appropriate Data Structures}
+
+We selected standard data structures based on their time complexity and use case:
+\begin{itemize}
+    \item \texttt{VecDeque} enables efficient undo/redo with O(1) operations.
+    \item \texttt{HashMap} and \texttt{HashSet} offer fast lookup for cell values and dependencies.
+    \item Sparse storage of cells avoids unnecessary memory usage for unused grid locations.
+\end{itemize}
+
+\subsection*{3. Modular and Testable Components}
+
+Each file in the codebase has a clearly defined role:
+\begin{itemize}
+    \item The parser is fully stateless and testable independently.
+    \item The backend provides a clean API with getter/setter methods, hiding internal complexity.
+    \item The frontend does not manipulate data directly but interacts through exposed interfaces.
+\end{itemize}
+This separation allows for easier debugging, testing, and parallel development.
+
+\subsection*{4. Encapsulation and Future Safety}
+
+Although fields in \texttt{structs.rs} are currently public for convenience, the overall structure respects encapsulation principles:
+\begin{itemize}
+    \item Logic-heavy modules hide internal state behind functions.
+    \item Functionality is exposed through well-defined methods, not raw field access.
+    \item The design allows for gradual hardening by making fields private in future iterations.
+\end{itemize}
+
+\subsection*{5. Handles Complexity Gracefully}
+
+The use of enums like \texttt{FunctionData}, \texttt{OperandData}, and \texttt{CellError} enables:
+\begin{itemize}
+    \item Compact and expressive pattern matching for evaluation.
+    \item Centralized error handling and validation.
+    \item Easier implementation of future features (e.g., ternary operations or new error types).
+\end{itemize}
+
+\subsection*{6. Extensibility and Maintainability}
+
+The design makes it easy to add features such as:
+\begin{itemize}
+    \item New functions like \texttt{MEDIAN} or \texttt{IF}.
+    \item New data types or formatting options.
+    \item Cell reference tracing, already supported by our dependency system.
+\end{itemize}
+
+Because responsibilities are cleanly divided, such changes do not require deep rewrites or risk introducing regressions in unrelated parts of the code.
+
+\subsection*{Conclusion}
+
+Overall, our design strikes a solid balance between practical implementation and long-term software engineering principles. It is modular, expressive, and robust—ideal for a spreadsheet system with growing complexity.
+
+\section*{Whether we had to modify our design}
+\begin{itemize}
+    \item While converting from terminal to extensions, we did not change the design of the terminal part and kept them separate by just adding functions to the old files and then creating new files for the GUI.
+    \item Hence, we could not support float, which we had proposed in the original proposal (i.e., decimal point precision).
+    \item We also realized that implementing \texttt{if-else} would require building an AST to handle complex conditions, and therefore, we did not implement it.
+\end{itemize}
+
+
+
+
+
+\end{document}

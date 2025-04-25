@@ -1,3 +1,6 @@
+LATEX = pdflatex
+FLAGS = -interaction=nonstopmode -halt-on-error
+
 all:
 	cargo build --release --features cli
 
@@ -9,6 +12,7 @@ test:
 
 docs:
 	cargo doc --open
+	$(LATEX) $(FLAGS) report.tex
 
 ext1:
 	trunk serve --no-default-features --features gui
