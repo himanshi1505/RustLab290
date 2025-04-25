@@ -23,7 +23,7 @@ This project is a spreadsheet Program which can be run using terminal or using w
 ## Features
 - Basic spreadsheet functionalities such as binary- addition, subtraction, multiplication, division,range- sum , min, max, stdev.
 - Cell referencing and formula evaluation.
-- Sleep
+- Sleep, enable and disable display, scroll_to , a ,w ,s ,d to navigate.
 ## Website features and Usage
 - Tab Bar - undo redo save load light and dark theme tabs
 - Formula Bar - shows formula of the slected cell
