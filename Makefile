@@ -15,7 +15,7 @@ docs:
 	$(LATEX) $(FLAGS) report.tex
 
 ext1:
-	trunk serve --no-default-features --features gui
+	trunk serve --no-default-features --features gui --port 8000
 
 clean:
 	cargo clean
