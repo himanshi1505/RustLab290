@@ -1,4 +1,4 @@
-# COP290 Project: Spreadsheet Programin Rust
+# COP290 Project: Spreadsheet Program in Rust
 
 This project is a spreadsheet Program which can be run using terminal or using website implemented in Rust.
 
@@ -21,9 +21,9 @@ This project is a spreadsheet Program which can be run using terminal or using w
 - `styles.css` : Visual styling.
 
 ## Features
-- Basic spreadsheet functionalities such as binary- addition, subtraction, multiplication, division,range- sum , min, max, stdev, avg.
+- Basic spreadsheet functionalities such as binary- addition, subtraction, multiplication, division,range- sum, min, max, stdev, avg.
 - Cell referencing and formula evaluation.
-- Sleep, enable and disable display, scroll_to , a ,w ,s ,d to navigate.
+- Sleep, enable and disable display, scroll_to, a, w, s, d to navigate.
 ## Website features and Usage
 - Tab Bar - undo, redo, save, load, light and dark theme tabs
 - Formula Bar - shows formula of the slected cell
