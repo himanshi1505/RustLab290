@@ -46,6 +46,8 @@ Note: whenever you do a action in website click somewhere else to update the tri
 ## How to Build
 1. Compile the project using `cargo run {rows} {cols}`.
 2. To run the website `trunk serve --no-default-features --features gui`.
+3. Port for website - 8080
+4. To open rustdoc: cargo doc --open
 
 ## Usage
 - Follow the on-screen instructions to create and manipulate spreadsheets.
